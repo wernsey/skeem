@@ -13,12 +13,6 @@ An interpreter for a small subset of [Scheme][].
 
 ### TODOs
 
-* Some mathematical expressions are problematic, like `(+ 0.1 1)`.
-  * I wanted to add a `NUMBER` type of `Expr` with a `double` value, but that is more complicated than it first seems when you consider what the `get_text()` function will have to do.
-* One of the issues with my error handling is how to track the line number in the source file in the `Expr` objects as the file is being parsed, like I do for other interpreters I've written, but this could be a bit problematic given that many (most?) of the `Expr` objects are created at run-time. Also, once you start adding lambdas into the mix.
-  * It is possible to track the line number in the parsed `Expr`s and then copy that line number to run-time `Expr`s.
-  * An alternative idea is to store a pointer to the problematic `Expr` as part of the error which you can just `dump()` in the error report. The error message will then just say something like `"error: divide by zero near (/ a 0)"`
-    * This will again be problematic if the expression with the error is complicated.
 * Missing operators:
   * `cond` special form
   * `append`, `reverse`
@@ -45,8 +39,6 @@ An interpreter for a small subset of [Scheme][].
   - <http://www.nada.kth.se/kurser/su/DA2001/sudata16/examination/schemeCheatsheet.pdf>
   - [Teach Yourself Scheme in Fixnum Days](https://ds26gte.github.io/tyscheme/index.html)
 
-Other resources
-
 [lispy]: http://norvig.com/lispy.html
 [lispy2]: http://norvig.com/lispy2.html
 [krig]: https://github.com/krig/LISP
@@ -57,16 +49,23 @@ Articles/links that might come in useful in the future
 
 * [Chapter 23](https://github.com/norvig/paip-lisp/blob/master/docs/chapter23.md) of [PAIP][paip] explains Compiling Lisp
 * [Beautiful Racket](https://beautifulracket.com/introduction.html)
-- <http://www.civilized.com/files/lispbook.pdf>
+* <http://www.civilized.com/files/lispbook.pdf>
 
 [paip]: https://github.com/norvig/paip-lisp
 
 ## Design Considerations
 
+* One of the issues with my error handling is how to track the line number in the source file in the `Expr` objects as the file is being parsed, like I do for other interpreters I've written, but this could be a bit problematic given that many (most?) of the `Expr` objects are created at run-time. Also, once you start adding lambdas into the mix.
+  * It is possible to track the line number in the parsed `Expr`s and then copy that line number to run-time `Expr`s.
+  * An alternative idea is to store a pointer to the problematic `Expr` as part of the error which you can just `dump()` in the error report. The error message will then just say something like `"error: divide by zero near (/ a 0)"`
+    * This will again be problematic if the expression with the error is complicated.
+
 ### Numbers
 
-The main reason that I don't have a `NUMBER` type of `Expr` is that the `get_text()` function will have to have some buffer to which to print the text value to.
-Unless `get_text()` modifies its parameter, but that violates the immutability of the `Expr` objects.
+Some mathematical expressions are problematic, like `(+ 0.1 1)`.
+
+I wanted to add a `NUMBER` type of `Expr` with a `double` value, but the main reason I didn't do that is `get_text()` function will need some buffer to which to print the text value to.
+The alternative is to have `get_text()` modify its parameter directly, but that violates the immutability of the `Expr` objects.
 
 My `check_numeric()` function originally looked like the below, but the newer versions just checks for something that starts with an optional '+' or '-' and a digit:
 
@@ -114,38 +113,19 @@ One problem with RC is that if you want to do something like
 `env_put(env, "foo", atom("bar"))` in the C API you have to be careful with how
 the environment takes ownership of the `atom()` pointer.
 
-
 ### Hash tables
 
-I had a hash function following me around, but for the life of me I couldn't
-remember where it came from:
+I'm using DJB hash, same as [krig][], but DJB is itself [a bit controversial](http://dmytry.blogspot.com/2009/11/horrible-hashes.html).
 
-    static unsigned int hash(const char *s) {
-        unsigned int i = 0x5555;
-        for(;s[0];s++)
-            i = i << 3 ^ (s[0] | (s[0] << 8));
-        return i % HASH_SIZE;
-    }
-
-I replaced it with DJB hash, same as [krig][], but DJB is itself
-[somewhat controversial](http://dmytry.blogspot.com/2009/11/horrible-hashes.html).
-
-[This link](http://www.cse.yorku.ca/~oz/hash.html) says you can use XOR instead of ADD. 
+I use [this advice](http://www.cse.yorku.ca/~oz/hash.html) that says you can use XOR instead of ADD. 
 [Here's an example](https://cr.yp.to/cdb/cdb.txt) of djb using the XOR version,
 but I didn't see anyone else using it like that.
 
-The reason I'm sticking with DJB, and not going something like [MurmurHash](https://en.wikipedia.org/wiki/MurmurHash) is that I don't want the interpreter's 
-LOC to be dominated by the hash function (which I'll admit is technically a terrible 
+The reason I'm sticking with DJB, and not going something like [MurmurHash](https://en.wikipedia.org/wiki/MurmurHash) is that 
+I don't want the interpreter's LOC to be dominated by the hash function (which I'll admit is technically a terrible 
 reason, but still).
 
-Links:
+[This StackOverflow answer](https://stackoverflow.com/a/13809282/115589) explains the constants in DJB.
 
-* A blog about [Python dictionary implementation](https://www.laurentluce.com/posts/python-dictionary-implementation/)
-* I found [this answer](https://stackoverflow.com/a/13809282/115589) which discusses the 
-  constants in DJB interesting.
-* Lists of hash functions: 
-  * <http://burtleburtle.net/bob/hash/doobs.html>
-  * <http://www.partow.net/programming/hashfunctions/#AvailableHashFunctions>
-  * <https://www.cs.hmc.edu/~geoff/classes/hmc.cs070.200101/homework10/hashfuncs.html>
-  * <http://www.eternallyconfuzzled.com/tuts/algorithms/jsw_tut_hashing.aspx>
+Here is a blog about the [Python dictionary implementation](https://www.laurentluce.com/posts/python-dictionary-implementation/).
 
