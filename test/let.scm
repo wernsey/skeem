@@ -1,0 +1,13 @@
+(define a 1)
+(define b 2)
+(let ((a 5) (b 6)) 
+    (write a) 
+    (write b)
+    (display "A + B is " (+ a b))    
+    (let ((a 3) (b 4)) 
+        (write a) 
+        ;(write x) ; Error test
+        (write b)
+        (display "A + B is " (+ a b))))
+(write a)
+(write b)

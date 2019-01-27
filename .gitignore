@@ -1,0 +1,5 @@
+.gdbinit
+*.o
+*.zip
+skeem
+skeem.exe
