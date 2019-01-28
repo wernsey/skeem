@@ -78,7 +78,7 @@ int main(int argc, char *argv[]) {
     }
 
 	rc_release(global);
-	
+
 	printf("max_level == %d\n", max_level);
 
     return rv;

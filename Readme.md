@@ -14,12 +14,14 @@ An interpreter for a small subset of [Scheme][].
 ### TODOs
 
 * Missing operators:
-  * `cond` special form
-  * `append`, `reverse`
+  * `reverse`
   * `foldr` and `foldl`
   * I can't see myself bothering with `eqv?` 
     * (Note to self: Racket's documentation on [booleans](https://docs.racket-lang.org/reference/booleans.html))
 * Racket allows `[]` to be used interchangeably with `()`; see [here](https://stackoverflow.com/a/41417968/115589).
+* Special forms:
+  * `let*` - see [here](http://www.cs.utexas.edu/ftp/garbage/cs345/schintro-v13/schintro_59.html)
+  * `cond` special form
 
 ## References
 
@@ -32,12 +34,14 @@ An interpreter for a small subset of [Scheme][].
 - Wikipedia entry for [cons](https://en.wikipedia.org/wiki/Cons)
 - [The Scheme Programming Language](https://www.scheme.com/tspl4/)
 - [Simply Scheme: Introducing Computer Science](https://people.eecs.berkeley.edu/~bh/ss-toc2.html)
+- [An Introduction to Scheme and its Implementation](http://www.cs.utexas.edu/ftp/garbage/cs345/schintro-v13/schintro_toc.html)
 - Some Scheme tutorials that I used for reference:
   - [Yet Another Scheme Tutorial](http://www.shido.info/lisp/idx_scm_e.html)
   - [Scheme for Java Programmers](http://cs.gettysburg.edu/~tneller/cs341/scheme-intro/index.html)
   - <https://www.st.cs.uni-saarland.de/edu/config-ss04/scheme-quickref.pdf>
   - <http://www.nada.kth.se/kurser/su/DA2001/sudata16/examination/schemeCheatsheet.pdf>
   - [Teach Yourself Scheme in Fixnum Days](https://ds26gte.github.io/tyscheme/index.html)
+  - [The Guile Reference Manual](https://www.gnu.org/software/guile/manual/html_node/index.html)
 
 [lispy]: http://norvig.com/lispy.html
 [lispy2]: http://norvig.com/lispy2.html

@@ -12,28 +12,9 @@
             l 
             (member x (cdr l)) )) )
             
-
-;(define (map2 f ls acc) 
-;    (if (null? ls) 
-;        acc 
-;        (map2 f (cdr ls) (cons (apply f (list (car ls))) acc))
-;    )
-;)
-
-(define (reverse ls acc) (if (null? ls)
-    acc
-    (reverse (cdr ls) (cons (car ls) acc))
-))
-
-; (reverse '(1 2 3 4 5 6) '())
-
-(define (map2 f ls) (begin
-    (set! (mapr f ls acc) 
-        (if (null? ls) 
-            acc 
-            (mapr f (cdr ls) (cons (f (car ls)) acc))
-        )
-    )
-    (reverse (mapr f ls '()) '())
-))
+; http://community.schemewiki.org/?fold
+; https://en.wikibooks.org/wiki/Write_Yourself_a_Scheme_in_48_Hours/Towards_a_Standard_Library
+(define (fold f i s) (if (null? s) i (fold f (f (car s) i) (cdr s))))
+(define (fold-right f i s) (if (null? s) i (f (car s) (foldr f i (cdr s)))))
+(define (reverse l) (fold cons '() l))
 
