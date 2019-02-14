@@ -25,6 +25,10 @@ An interpreter for a small subset of [Scheme][].
   * `let*` - see [here](http://www.cs.utexas.edu/ftp/garbage/cs345/schintro-v13/schintro_59.html)
   * `cond` special form
 
+#### Bugs
+
+* This input broke the interpreter: `(nth 3 (range 10 20))^Z`
+
 ## References
 
 - Peter Norvig's [lispy][] interpreter and [part2][lispy2]
@@ -44,6 +48,8 @@ An interpreter for a small subset of [Scheme][].
   - <http://www.nada.kth.se/kurser/su/DA2001/sudata16/examination/schemeCheatsheet.pdf>
   - [Teach Yourself Scheme in Fixnum Days](https://ds26gte.github.io/tyscheme/index.html)
   - [The Guile Reference Manual](https://www.gnu.org/software/guile/manual/html_node/index.html)
+  - <https://en.wikibooks.org/wiki/Write_Yourself_a_Scheme_in_48_Hours/Towards_a_Standard_Library>
+  - <http://community.schemewiki.org/?fold>
 
 [lispy]: http://norvig.com/lispy.html
 [lispy2]: http://norvig.com/lispy2.html

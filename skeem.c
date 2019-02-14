@@ -1049,6 +1049,8 @@ void add_c_function(Env *global, const char *name, c_function function) {
     env_put(global, name, cfun(function));
 }
 
+#define TEXT_LIB(g,t) do {Expr *x = eval_str(g, t); assert(!is_error(x));rc_release(x);} while(0)
+
 Env *global_env() {
     Env *global = env_create(NULL);
 
@@ -1084,6 +1086,12 @@ Env *global_env() {
     add_c_function(global, "map", bif_map);
     add_c_function(global, "filter", bif_filter);
     add_c_function(global, "append", bif_append);
+    
+    TEXT_LIB(global,"(define (fold f i L) (if (null? L) i (fold f (f (car L) i) (cdr L))))");
+    TEXT_LIB(global,"(define (fold-right f i L) (if (null? L) i (f (car L) (fold-right f i (cdr L)))))");
+    TEXT_LIB(global,"(define (reverse l) (fold cons '() l))");
+    TEXT_LIB(global,"(define (range a b) (if (= a b) (list b) (cons a (range (+ a 1) b))))");
+    TEXT_LIB(global,"(define (nth n L) (if (or (null? L) (< n 0)) '() (if (= n 1) (car L) (nth (- n 1) (cdr L)))))");
 
     env_put(global, "pi", nvalue(M_PI));
 
