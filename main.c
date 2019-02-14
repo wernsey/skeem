@@ -5,11 +5,11 @@
 #include "skeem.h"
 #include "refcnt.h"
 
-extern int level, max_level;
+static char *readfile(const char *fname);
 
 int main(int argc, char *argv[]) {
 
-    int rv = 0, verbose = 0;
+    int rv = 0;
 
     rc_init();
 
@@ -22,27 +22,18 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "error: reading %s: %s\n", argv[1], strerror(errno));
             rv = 1;
         } else {
-            Expr *program = parse_stmts(text);
-            if(is_error(program)) {
-                fprintf(stderr, "error [parse]: %s\n", get_text(program));
-                rv = 1;
-            } else {
-                if(verbose) {
-                    write(program);
-                    fputs("\n", stdout);
-                }
-                Expr *result = eval(global, program);
-                if(is_error(result)) {
-                    fprintf(stderr, "error [eval]: %s\n", get_text(result));
-                } else {
-                    printf("Result:\n");
-                    write(result);
-                    fputs("\n", stdout);
-                }
-                if(result) rc_release(result);
-            }
-            if(program) rc_release(program);
-            free(text);
+            
+			Expr *result = eval_str(global, text);
+			if(is_error(result)) {
+				fprintf(stderr, "error: %s\n", get_text(result));
+			} else {
+				printf("Result:\n");
+				write(result);
+				fputs("\n", stdout);
+			}
+            if(result) rc_release(result);
+            
+			free(text);
         }
     } else {
 
@@ -52,34 +43,45 @@ int main(int argc, char *argv[]) {
             if(!fgets(buffer, sizeof buffer, stdin))
                 break;
 
-            Expr *program = parse(buffer);
-			if(is_error(program)) {
-		        fprintf(stderr, "error [parse]: %s\n", get_text(program));
-				rc_release(program);
-				continue;
-			}
-
-            if(verbose) {
-                write(program);
-                fputs("\n", stdout);
-            }
-
-            Expr *result = eval(global, program);
+            Expr *result = eval_str(global, buffer);
             if(is_error(result)) {
-		        fprintf(stderr, "error [eval]: %s\n", get_text(result));
+		        fprintf(stderr, "error: %s\n", get_text(result));
 			} else {
                 write(result);
             	fputs("\n", stdout);
 			}
             if(result) rc_release(result);
-
-			if(program) rc_release(program);
         }
     }
 
 	rc_release(global);
 
-	printf("max_level == %d\n", max_level);
-
     return rv;
 }
+
+static char *readfile(const char *fname) {
+    FILE *f;
+    long len,r;
+    char *str;
+
+    if(!(f = fopen(fname, "rb")))
+        return NULL;
+
+    fseek(f, 0, SEEK_END);
+    len = ftell(f);
+    rewind(f);
+
+    if(!(str = malloc(len+2)))
+        return NULL;
+    r = fread(str, 1, len, f);
+
+    if(r != len) {
+        free(str);
+        return NULL;
+    }
+
+    fclose(f);
+    str[len] = '\0';
+    return str;
+}
+

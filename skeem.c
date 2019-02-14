@@ -118,23 +118,17 @@ Expr *env_put(Env *env, const char *name, Expr *e) {
         v->next = env->table[h];
         env->table[h] = v;
     } else
-        if(v->ex) rc_release(v->ex);
-
-    /* I make an assuption here that we don't need to retain it.
-        See the readme for why; also e may be null */
-    //v->ex = rc_retain(e);
+        rc_release(v->ex);
     v->ex = e;
-
     return e;
 }
 
 int equal(Expr *a, Expr *b) {
     if(!a || !b)
         return !a && !b;
-    if(a->type != b->type)
+    else if(a->type != b->type)
         return 0;
-
-    switch(a->type) {
+    else switch(a->type) {
         case CFUN: return a->func == b->func;
         case ERROR: return 0;
         case SYMBOL: return !strcmp(a->value, b->value);
@@ -144,7 +138,6 @@ int equal(Expr *a, Expr *b) {
         case CONS: return equal(a->car, b->car) && equal(a->cdr, b->cdr);
         case LAMBDA: return equal(a->args, b->args) && equal(a->body, b->body);
     }
-
     return 1;
 }
 
@@ -387,10 +380,11 @@ restart:
             in++;
         }
         goto restart;
-    } else if (strchr("()'", *in)) {
-        char c = *in;
+    } else if (strchr("()'[]", *in)) {
+        tok[0] = *in;
+        tok[1] ='\0';
         *rem =  ++in;
-        return c;
+        return tok[0];
     } else if (*in == '\"') {
         while(*++in != '\"') {
             if(!*in) {
@@ -410,7 +404,7 @@ restart:
         snprintf(tok, n, "bad character in input stream (%d)", *in);
         return SCAN_ERROR;
     } else {
-        while(isgraph(*in) && *in != ')') {
+        while(isgraph(*in) && !strchr("])", *in)) {
             if(i == n) {
                 snprintf(tok, n, "token too long");
                 return SCAN_ERROR;
@@ -464,16 +458,17 @@ static Expr *parse0(Parser *p) {
         return boolean(1);
     else if(accept(p, SCAN_FALSE))
         return boolean(0);
-    else if(accept(p, '(')) {
+    else if(accept(p, '(') || accept(p, '[')) {
         Expr *list = NULL, *last = NULL;
-        while(!accept(p, ')')) {
+        char term = p->tok[0] == '(' ? ')' : ']';
 
+        while(!accept(p, term)) {
             if(accept(p, SCAN_ERROR)) {
                 if(list) rc_release(list);
                 return error(p->tok);
             } else if(accept(p, SCAN_END)) {
                 if(list) rc_release(list);
-                return error("expected ')'");
+                return errorf("expected '%c'", term);
             }
 
             Expr *e = parse0(p);
@@ -490,7 +485,8 @@ static Expr *parse0(Parser *p) {
         if(is_error(e))
             return e;
         return cons(symbol("quote"), cons(e, NULL));
-    }
+    } else if(accept(p, ')') || accept(p, ']'))
+        return errorf("mismatched '%c'", p->tok[0]);
 
     return error("unhandled token type");
 }
@@ -625,14 +621,9 @@ Expr *apply(Env *env, Expr *f, Expr *a) {
     return result;
 }
 
-int level = 0, max_level = 0;
-
 Expr *eval(Env *env, Expr *e) {
     Expr *result = NULL, *args = NULL;
     Env *new_env = NULL;
-
-    level++;
-    if(level > max_level) max_level = level;
 
     assert(env);
     for(;;) {
@@ -706,8 +697,7 @@ Expr *eval(Env *env, Expr *e) {
                     result = error("bad let");
                     break;
                 }
-                Expr *a = e->cdr->car;
-                Expr *b = e->cdr->cdr;
+                Expr *a = e->cdr->car, *b = e->cdr->cdr;
 
                 Env *o = new_env;
                 new_env = env_create(env);
@@ -720,9 +710,7 @@ Expr *eval(Env *env, Expr *e) {
                         goto end_let;
                     }
                     const char *name = get_text(a->car->car);
-                    //printf("LET & %s = ", name);write(a->car->cdr->car);printf("\n");
                     Expr *v = eval(env, a->car->cdr->car);
-                    //printf("LET @ %s = ", name);write(v);printf("\n");
                     if(is_error(v)) {
                         result = v;
                         goto end_let;
@@ -731,7 +719,6 @@ Expr *eval(Env *env, Expr *e) {
                 }
                 for(; b && b->cdr; b = b->cdr) {
                     if(result) rc_release(result);
-                    //printf("LET > ");write(b->car);printf("\n");
                     result = eval(new_env, b->car);
                     if(is_error(result))
                         goto end_let;
@@ -830,7 +817,6 @@ end_let:
                 }
 
                 Expr *f = args->car, *a = args->cdr;
-
                 if(f->type == CFUN) {
                     assert(f->func);
                     result = f->func(env, a);
@@ -854,9 +840,8 @@ end_let:
                         e = f->body;
                         continue; /* TCO */
                     }
-                } else {
+                } else
                     result = error("attempt to call something that is not a function");
-                }
             }
         } else
             result = error("don't know how to `eval()` this :(");
@@ -867,9 +852,16 @@ end:
     if(args) rc_release(args);
     if(new_env) rc_release(new_env);
 
-    level--;
-
     return result;
+}
+
+Expr *eval_str(Env *global, const char *text) {
+	Expr *program = parse_stmts(text), *result;
+	if(is_error(program))
+		return program;
+	result = eval(global, program);
+	rc_release(program);
+	return result;
 }
 
 static Expr *bif_write(Env *env, Expr *e) {
@@ -1096,30 +1088,4 @@ Env *global_env() {
     env_put(global, "pi", nvalue(M_PI));
 
     return global;
-}
-
-char *readfile(const char *fname) {
-    FILE *f;
-    long len,r;
-    char *str;
-
-    if(!(f = fopen(fname, "rb")))
-        return NULL;
-
-    fseek(f, 0, SEEK_END);
-    len = ftell(f);
-    rewind(f);
-
-    if(!(str = malloc(len+2)))
-        return NULL;
-    r = fread(str, 1, len, f);
-
-    if(r != len) {
-        free(str);
-        return NULL;
-    }
-
-    fclose(f);
-    str[len] = '\0';
-    return str;
 }

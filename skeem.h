@@ -112,8 +112,8 @@ Expr *apply(Env *env, Expr *f, Expr *p);
 
 Expr *eval(Env *env, Expr *e);
 
+Expr *eval_str(Env *global, const char *text);
+
 void add_c_function(Env *global, const char *name, c_function function);
 
 Env *global_env();
-
-char *readfile(const char *fname);

@@ -1,4 +1,3 @@
-#CC=C:\Tools\tcc\tcc
 CC=gcc
 
 # TODO: You need to comment out this line once things get relatively stable
@@ -25,12 +24,12 @@ CFLAGS += -O2 -DNDEBUG
 LDFLAGS += -s
 endif
 
-all: skeem
+all: skeem.exe
 
 debug:
 	make BUILD=debug
 
-skeem: $(OBJECTS)
+skeem.exe: $(OBJECTS)
 	$(CC) $^ $(LDFLAGS) -o $@
 
 .c.o:
@@ -43,7 +42,7 @@ refcnt.o : refcnt.c refcnt.h
 .PHONY : clean
 
 clean:
-	-rm -f skeem *.exe $(DISTFILE)
+	-rm -f *.exe $(DISTFILE)
 	-rm -f *.o
 
 dist: clean

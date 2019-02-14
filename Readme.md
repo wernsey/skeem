@@ -8,17 +8,19 @@ An interpreter for a small subset of [Scheme][].
 
 * `define` affects the global environment, wheras `set!` affects the local environment. [Norvig][chap22] said that `define` and `set!` are equivalent.
   * My implementation lets you `define` a variable more than once. The second `define` just replaces the first value.
+* Like in [Racket](https://stackoverflow.com/a/41417968/115589), square brackets `[]` can be used interchangeably with parentheses `()`.
 * Don't count on arithmetic to be too accurate, due to all the `atof`ing and `snprintf`ing going on behind the scenes.
-  * Actually I can just start using doubles now. Storing everything in strings sounded like a good idea at the start, but it doesn't seem that way any more.
+  * Storing everything in strings sounded like a good idea at the start, but it doesn't seem that way any more.
 
-### TODOs
+#### TODOs
 
+* Escape sequences in string literals!
 * Missing operators:
   * `reverse`
   * `foldr` and `foldl`
   * I can't see myself bothering with `eqv?` 
     * (Note to self: Racket's documentation on [booleans](https://docs.racket-lang.org/reference/booleans.html))
-* Racket allows `[]` to be used interchangeably with `()`; see [here](https://stackoverflow.com/a/41417968/115589).
+  * `remainder` and `modulo` functions?
 * Special forms:
   * `let*` - see [here](http://www.cs.utexas.edu/ftp/garbage/cs345/schintro-v13/schintro_59.html)
   * `cond` special form
@@ -59,10 +61,12 @@ Articles/links that might come in useful in the future
 
 ## Design Considerations
 
-* One of the issues with my error handling is how to track the line number in the source file in the `Expr` objects as the file is being parsed, like I do for other interpreters I've written, but this could be a bit problematic given that many (most?) of the `Expr` objects are created at run-time. Also, once you start adding lambdas into the mix.
-  * It is possible to track the line number in the parsed `Expr`s and then copy that line number to run-time `Expr`s.
-  * An alternative idea is to store a pointer to the problematic `Expr` as part of the error which you can just `dump()` in the error report. The error message will then just say something like `"error: divide by zero near (/ a 0)"`
-    * This will again be problematic if the expression with the error is complicated.
+* One of the issues with my error handling is how to track the line number in the 
+  source file in the `Expr` objects as the file is being parsed, like I do for other 
+  interpreters I've written, but this could be a bit problematic given that many (most?) of the `Expr`
+  objects are created at run-time.
+* I'll probably need an `expand()` like [lispy][lispy2]'s eventually if I'm to implement quasiquotes.
+  I didn't think it necessary yet since skeem does most of the error checking and transforms elsewhere already.
 
 ### Numbers
 
