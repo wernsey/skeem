@@ -1,4 +1,5 @@
 CC=gcc
+AWK=gawk
 
 # TODO: You need to comment out this line once things get relatively stable
 BUILD=debug
@@ -29,7 +30,7 @@ ifeq ($(OS),Windows_NT)
   EXECUTABLE:=$(EXECUTABLE).exe
 endif
 
-all: $(EXECUTABLE)
+all: $(EXECUTABLE) docs
 
 debug:
 	make BUILD=debug
@@ -44,11 +45,23 @@ $(EXECUTABLE): $(OBJECTS)
 skeem.o : skeem.c skeem.h refcnt.h
 refcnt.o : refcnt.c refcnt.h
 
+docs: docsdir docs/skeem.html docs/README.html
+
+docsdir:
+	-mkdir docs
+
+docs/skeem.html: skeem.h d.awk
+	$(AWK) -v Title="API Documentation" -f d.awk $< > $@
+
+docs/README.html: README.md d.awk
+	$(AWK) -f d.awk -v Clean=1 -v Title="README" $< > $@
+
 .PHONY : clean
 
 clean:
 	-rm -f $(EXECUTABLE) $(DISTFILE)
 	-rm -f *.o
+	-rm -rf docs
 
 dist: clean
-	zip $(DISTFILE) *.c *.h Makefile Readme.md test/*.scm
+	zip $(DISTFILE) *.c *.h Makefile Readme.md d.awk test/*.scm

@@ -36,6 +36,7 @@ An interpreter for a small subset of [Scheme][].
   * [ ] `(string-split str [sep=' ' trim?=#t repeat?=#f])`
   * [ ] `(string-trim str)`
   * [ ] `(string-contains? s what)`, `(string-prefix? s what)` and `(string-suffix? s what)`
+* Math functions: `sin`, `cos`, `tan`, `atan`, etc
 
 #### Bugs
 
@@ -62,10 +63,13 @@ An interpreter for a small subset of [Scheme][].
   - [The Guile Reference Manual](https://www.gnu.org/software/guile/manual/html_node/index.html)
   - <https://en.wikibooks.org/wiki/Write_Yourself_a_Scheme_in_48_Hours/Towards_a_Standard_Library>
   - <http://community.schemewiki.org/?fold>
+- [Reference counting in ANSI-C][refcnt-c]
 
 [lispy]: http://norvig.com/lispy.html
 [lispy2]: http://norvig.com/lispy2.html
 [krig]: https://github.com/krig/LISP
+[refcnt-c]: https://xs-labs.com/en/archives/articles/c-reference-counting/
+
 
 ### Further Reading
 
@@ -80,8 +84,8 @@ Articles/links that might come in useful in the future
 ## Design Considerations
 
 * One of the issues with my error handling is how to track the line number in the 
-  source file in the `Expr` objects as the file is being parsed, like I do for other 
-  interpreters I've written, but this could be a bit problematic given that many (most?) of the `Expr`
+  source file in the `SkObj` objects as the file is being parsed, like I do for other 
+  interpreters I've written, but this could be a bit problematic given that many (most?) of the `SkObj`
   objects are created at run-time.
 * I'll probably need an `expand()` like [lispy][lispy2]'s eventually if I'm to implement quasiquotes.
   I didn't think it necessary yet since skeem does most of the error checking and transforms elsewhere already.
@@ -90,13 +94,13 @@ Articles/links that might come in useful in the future
 
 Some mathematical expressions are problematic, like `(+ 0.1 1)`.
 
-I wanted to add a `NUMBER` type of `Expr` with a `double` value, but the main reason I didn't do that is `get_text()` function will need some buffer to which to print the text value to.
-The alternative is to have `get_text()` modify its parameter directly, but that violates the immutability of the `Expr` objects.
+I wanted to add a `NUMBER` type of `SkObj` with a `double` value, but the main reason I didn't do that is `sk_get_text()` function will need some buffer to which to print the text value to.
+The alternative is to have `sk_get_text()` modify its parameter directly, but that violates the immutability of the `SkObj` objects.
 
-My `check_numeric()` function originally looked like the below, but the newer versions just checks for something that starts with an optional '+' or '-' and a digit:
+My `sk_check_numeric()` function originally looked like the below, but the newer versions just checks for something that starts with an optional '+' or '-' and a digit:
 
 ```
-int check_numeric(const char *c) {
+int sk_check_numeric(const char *c) {
 	int ds = 0, de = 0;
 	if(strchr("+-", *c))
 		c++;
@@ -126,9 +130,9 @@ I'm leaning towards using the reference counter for garbage collection:
  * Non-reentrancy is a problem why again?
  * It wouldn't be too difficult to make the collector reentrant...
  * ...but you won't be able to share objects between `Environment`s. I can't remember why this is a problem exactly, but it had something to do with, say, the NPCs in a CRPG each having their own `Environment`, but having to share objects from time to time when they interact
-* The MS has a drawback that the `Expr` structures of the parsed program itself has to be marked every GC iteration, but they won't be sweeped while the program is still in use.
+* The MS has a drawback that the `SkObj` structures of the parsed program itself has to be marked every GC iteration, but they won't be sweeped while the program is still in use.
  * A generational collector would alleviate this problem, but it comes with additional complexity, for example, the case where an object in an older generation acquires a pointer to a object in a younger generation
- * An alternative solution is to track the program's `Expr` objects with a separate MS, but this would require the MS to be made reentrant, with the same problems outlined above.
+ * An alternative solution is to track the program's `SkObj` objects with a separate MS, but this would require the MS to be made reentrant, with the same problems outlined above.
 * My RC also has some non-reentrant features for debugging memory leaks, but the problems with sharing objects between interpreter environments
 
 It seems the biggest drawback of using RC is that you can't have closures: The lambda has to keep a reference to the environment in which it was created, which in turn eventually has a reference to the global environment. So if you store a lambda with a closure in a global variable you'll have a circular reference, and therefore a leak.

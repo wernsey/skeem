@@ -4,12 +4,12 @@
 #include <errno.h>
 #include <assert.h>
 
-#include "skeem.h"
 #include "refcnt.h"
+#include "skeem.h"
 
 static char *readfile(const char *fname);
 
-static void add_io_functions(Env *global);
+static void add_io_functions(SkEnv *global);
 
 int main(int argc, char *argv[]) {
 
@@ -17,7 +17,7 @@ int main(int argc, char *argv[]) {
 
     rc_init();
 
-    Env *global = global_env();
+    SkEnv *global = sk_global_env();
 
     add_io_functions(global);
 
@@ -29,12 +29,12 @@ int main(int argc, char *argv[]) {
             rv = 1;
         } else {
 
-            Expr *result = eval_str(global, text);
-            if(is_error(result)) {
-                fprintf(stderr, "error: %s\n", get_text(result));
+            SkObj *result = sk_eval_str(global, text);
+            if(sk_is_error(result)) {
+                fprintf(stderr, "error: %s\n", sk_get_text(result));
             } else {
                 printf("Result:\n");
-                write(stdout, result);
+                sk_write(stdout, result);
                 fputs("\n", stdout);
             }
             if(result) rc_release(result);
@@ -49,11 +49,11 @@ int main(int argc, char *argv[]) {
             if(!fgets(buffer, sizeof buffer, stdin))
                 break;
 
-            Expr *result = eval_str(global, buffer);
-            if(is_error(result)) {
-                fprintf(stderr, "error: %s\n", get_text(result));
-            } else if(!is_null(result)) {
-                write(stdout, result);
+            SkObj *result = sk_eval_str(global, buffer);
+            if(sk_is_error(result)) {
+                fprintf(stderr, "error: %s\n", sk_get_text(result));
+            } else if(!sk_is_null(result)) {
+                sk_write(stdout, result);
                 fputs("\n", stdout);
             }
             if(result) rc_release(result);
@@ -101,69 +101,69 @@ static void bif_fclose(void *p) {
     fclose(f);
 }
 
-static Expr *bif_fopen(Env *env, Expr *e) {
-    const char *filename = get_text(car(e));
-    const char *filemode = get_text(car(cdr(e)));
+static SkObj *bif_fopen(SkEnv *env, SkObj *e) {
+    const char *filename = sk_get_text(sk_car(e));
+    const char *filemode = sk_get_text(sk_car(sk_cdr(e)));
     if(!filename[0] || !filemode[0])
-        return error("'fopen' expects a filename and mode");
+        return sk_error("'fopen' expects a filename and mode");
 
     FILE *f = fopen(filename, filemode);
     if(!f)
-        return errorf("unable to open %s (%s): %s", filename, filemode, strerror(errno));
-    return cdata(f, bif_fclose);
+        return sk_errorf("unable to open %s (%s): %s", filename, filemode, strerror(errno));
+    return sk_cdata(f, bif_fclose);
 }
 
-static Expr *bif_fputs(Env *env, Expr *e) {
-    Expr *file = car(e);
-    const char *text = get_text(car(cdr(e)));
+static SkObj *bif_fputs(SkEnv *env, SkObj *e) {
+    SkObj *file = sk_car(e);
+    const char *text = sk_get_text(sk_car(sk_cdr(e)));
 
     /* You can check the cdtor of the CDATA object to make sure it's
         of the correct type.
-        Technically the `is_cdata()` call here is not necessary because
-        `get_cdtor()` will also return NULL if it's not given a CDATA
+        Technically the `sk_is_cdata()` call here is not necessary because
+        `sk_get_cdtor()` will also return NULL if it's not given a CDATA
     */
-    if(is_null(file) || !is_cdata(file) || get_cdtor(file) != bif_fclose)
-        return error("'fputs' expects a file as its first parameter");
-    assert(get_cdata(file)); /* shouldn't be null because of how `bif_fopen` works */
-    FILE *f = get_cdata(file);
+    if(sk_is_null(file) || !sk_is_cdata(file) || sk_get_cdtor(file) != bif_fclose)
+        return sk_error("'fputs' expects a file as its first parameter");
+    assert(sk_get_cdata(file)); /* shouldn't be null because of how `bif_fopen` works */
+    FILE *f = sk_get_cdata(file);
     if(fputs(text, f) == EOF || fputs("\n",f) == EOF)
-        return errorf("unable to write to file: %s", strerror(errno));
+        return sk_errorf("unable to sk_write to file: %s", strerror(errno));
     return NULL;
 }
 
-static Expr *bif_fgets(Env *env, Expr *e) {
-    Expr *file = car(e);
-    if(is_null(file) || !is_cdata(file) || get_cdtor(file) != bif_fclose)
-        return error("'fgets' expects a file as its first parameter");
-    assert(get_cdata(file));
-    FILE *f = get_cdata(file);
+static SkObj *bif_fgets(SkEnv *env, SkObj *e) {
+    SkObj *file = sk_car(e);
+    if(sk_is_null(file) || !sk_is_cdata(file) || sk_get_cdtor(file) != bif_fclose)
+        return sk_error("'fgets' expects a file as its first parameter");
+    assert(sk_get_cdata(file));
+    FILE *f = sk_get_cdata(file);
     if(feof(f))
         return NULL;
 
     char buffer[256];
     if(!fgets(buffer, sizeof buffer, f))
-        return feof(f) ? NULL : errorf("unable to read from file: %s", strerror(errno));
+        return feof(f) ? NULL : sk_errorf("unable to read from file: %s", strerror(errno));
 
     /* Trim trailing space: */
     int l = strlen(buffer);
     while((l > 0) && strchr("\r\n", buffer[l - 1]))
         buffer[--l] = '\0';
 
-    return value(buffer);
+    return sk_value(buffer);
 }
 
-static Expr *bif_feof(Env *env, Expr *e) {
-    Expr *file = car(e);
-    if(is_null(file) || !is_cdata(file) || get_cdtor(file) != bif_fclose)
-        return error("'feof' expects a file as its first parameter");
-    assert(get_cdata(file));
-    FILE * f = get_cdata(file);
-    return boolean(feof(f));
+static SkObj *bif_feof(SkEnv *env, SkObj *e) {
+    SkObj *file = sk_car(e);
+    if(sk_is_null(file) || !sk_is_cdata(file) || sk_get_cdtor(file) != bif_fclose)
+        return sk_error("'feof' expects a file as its first parameter");
+    assert(sk_get_cdata(file));
+    FILE *f = sk_get_cdata(file);
+	return sk_boolean(feof(f));
 }
 
-static void add_io_functions(Env *global) {
-    env_put(global, "fopen", cfun(bif_fopen));
-    env_put(global, "fputs", cfun(bif_fputs));
-    env_put(global, "fgets", cfun(bif_fgets));
-    env_put(global, "feof", cfun(bif_feof));
+static void add_io_functions(SkEnv *global) {
+    sk_env_put(global, "fopen", sk_cfun(bif_fopen));
+    sk_env_put(global, "fputs", sk_cfun(bif_fputs));
+    sk_env_put(global, "fgets", sk_cfun(bif_fgets));
+    sk_env_put(global, "feof", sk_cfun(bif_feof));
 }
