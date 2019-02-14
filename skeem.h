@@ -372,11 +372,13 @@ int sk_is_error(SkObj *e);
 int sk_equal(SkObj *a, SkObj *b);
 
 /**
- * #### `void sk_write(FILE *f, SkObj *e);`
+ * #### `char *sk_serialize(SkObj *e);`
  *
- * Serializes and writes the object `e` to the file `f`
+ * Serializes the object `e` into a text buffer.
+ *
+ * The returned buffer is on the heap and needs to be `free()`d after use.
  */
-void sk_write(FILE *f, SkObj *e);
+char *sk_serialize(SkObj *e);
 
 /**
  * #### `int sk_check_numeric(const char *s);`

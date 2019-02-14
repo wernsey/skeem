@@ -33,9 +33,9 @@ int main(int argc, char *argv[]) {
             if(sk_is_error(result)) {
                 fprintf(stderr, "error: %s\n", sk_get_text(result));
             } else {
-                printf("Result:\n");
-                sk_write(stdout, result);
-                fputs("\n", stdout);
+                char *text = sk_serialize(result);
+                printf("Result: %s\n", text);
+                free(text);
             }
             if(result) rc_release(result);
 
@@ -53,8 +53,9 @@ int main(int argc, char *argv[]) {
             if(sk_is_error(result)) {
                 fprintf(stderr, "error: %s\n", sk_get_text(result));
             } else if(!sk_is_null(result)) {
-                sk_write(stdout, result);
-                fputs("\n", stdout);
+                char *text = sk_serialize(result);
+                puts(text);
+                free(text);
             }
             if(result) rc_release(result);
         }
@@ -139,7 +140,7 @@ static SkObj *bif_fputs(SkEnv *env, SkObj *e) {
     assert(sk_get_cdata(file)); /* shouldn't be null because of how `bif_fopen` works */
     FILE *f = sk_get_cdata(file);
     if(fputs(text, f) == EOF || fputs("\n",f) == EOF)
-        return sk_errorf("unable to sk_write to file: %s", strerror(errno));
+        return sk_errorf("unable to write to file: %s", strerror(errno));
     return NULL;
 }
 
@@ -169,7 +170,7 @@ static SkObj *bif_feof(SkEnv *env, SkObj *e) {
     if(sk_is_null(file) || !sk_is_cdata(file) || sk_get_cdtor(file) != file_dtor)
         return sk_error("'feof' expects a file as its first parameter");
     assert(sk_get_cdata(file));
-	FILE *f = sk_get_cdata(file);
+    FILE *f = sk_get_cdata(file);
     return sk_boolean(feof(f));
 }
 

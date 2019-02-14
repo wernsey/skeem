@@ -70,7 +70,8 @@ Articles/links that might come in useful in the future
 ### TODOs
 
 * [x] Escape sequences in string literals!
-* [ ] The way `VALUE`s are written in `sk_write()` should take escape characters into account.
+* [x] The way `VALUE`s are written in `sk_serialize()` should escape special characters.
+  * You can use the new `buffer_appendn()` function with a `s` as a `char[2]` and `len = 1`
 * Special forms:
   * [ ] `let*` - see [here](http://www.cs.utexas.edu/ftp/garbage/cs345/schintro-v13/schintro_59.html)
   * [ ] `cond` special form
@@ -82,13 +83,14 @@ Articles/links that might come in useful in the future
   * [x] `(string=? str1 str2...)` and `(string<? str1 str2)` - _all the other comparisons can be made from =? and <?_
   * [x] `(string-upcase str)`
   * [x] `(string-downcase str)`
-  * [ ] `(string-replace str from to [all=#t])`
+  * [x] `(string-replace str from to [all=#t])`
     * You need the `filter` in this line `(define x (filter (lambda (s) (> (string-length? s) 0)) (string-split (readfile 'test2.txt) "\r\n")))`
-      because the
+      because the DOS `\r` characters really breaks them when we don't have a `string-replace` function.  \
+	  Fixed: You can now do `(define x (string-split (string-replace (readfile 'test2.txt) "\r" "") "\n"))`
   * [x] `(string-split str [sep=' '])`
   * [x] `(string-trim str)`
-  * [ ] `(string-contains? s what)`, `(string-prefix? s what)` and `(string-suffix? s what)`
-    * [ ] Actually, I only need a `(string-find haystack needle)` function in C that returns the index of the needle in the
+  * [x] `(string-contains? s what)`, `(string-prefix? s what)` and `(string-suffix? s what)`
+    * [x] Actually, I only need a `(string-find haystack needle)` function in C that returns the index of the needle in the
        haystack, and then these other functions can be defined in terms of that.
 * [x] Math functions: `sin`, `cos`, `tan`, `atan`, etc
 * [x] If you look at `bif_string_append()` (and `bif_string_split()` and elsewhere) there is clearly a need for an
@@ -96,15 +98,28 @@ Articles/links that might come in useful in the future
   It would work like `sk_value(buf)`, but replaces the `strdup()` with a normal assignment.
   This would allow you to remove the `free()` from `bif_string_append()`.
 * [ ] The hash-tables in the environments need a variable capacity. The global environment needs a bit more
-  slots than the current 32, while 32 slots seems like overkil for a typical lambda.
+  slots than the current 32, while 32 slots seems like overkill for a typical lambda.
+* Skeem can't have a proper `call/cc` for the same reasons it can't have closures (hint: reference counting).  \
+  It might be possible to a _escaping continuation_ version of `call/cc` similar to how [lispy2][] does it.  \
+  It would however require the addition of a new type of value that needs to be checked for in `sk_eval()` 
+  every time `sk_eval()` calls itself recursively.  \
+  The implementation of `call/cc` would need some way to identify itself if you were to have nested `call/cc`s.
+  I think using the value of the `SkObj *` pointer passed to the `call_cc` CFun will be sufficient.  \
+  Here's [another link][callcc]
+* [ ] **(6) Procedures with arbitrary number of arguments** from [lispy2][] shouldn't be too difficult to implement.
+  If I ever implement the `(x . y)` syntax, the `(arg1 arg2 . rest)` syntax should also be doable.
+* [ ] Implement [dotted pairs](https://ds26gte.github.io/tyscheme/index-Z-H-4.html#node_sec_2.2.3)
+
+[callcc]: https://ds26gte.github.io/tyscheme/index-Z-H-15.html#node_chap_13
 
 ### Bugs
 
-* This input broke the REPL interpreter: `(nth 3 (range 10 20))^Z`
+* ~~This input broke the REPL interpreter: `(nth 3 (range 10 20))^Z`~~ - should've just pressed enter.
 
 ### Numbers
 
-All values are stored as strings internally. This negatively affects numeric performance because a value needs to
+All values are stored as strings internally. 
+This means that (a) precision is negatively affected, and (b) numeric performance is bad because a value needs to
 be converted to a double (through `atof()`) if it is used as a number, and then converted back into a string
 (through `snprintf()`) when it is stored.
 
@@ -112,27 +127,6 @@ A solution would be a `NUMBER` type `SkObj` with a `double` value, but the `sk_g
 need some buffer to which to print the text value to.
 Having `sk_get_text()` change its parameter directly is out of the question because it violates the
 immutability of the `SkObj` objects.
-
-My `sk_check_numeric()` function originally looked like the below, but the newer versions just checks for something
-that starts with an optional '+' or '-' and a digit:
-
-```
-int sk_check_numeric(const char *c) {
-    int ds = 0, de = 0;
-    if(strchr("+-", *c))
-        c++;
-    if(!*c) return 0;
-    while(isdigit(*c) || (*c == '.' && !ds++) || ((*c == 'e' || *c == 'E') && !de++)) {
-        if(*c == 'e' || *c == 'E') {
-            c++;
-            if(*c == '-' || *c == '+')
-                c++;
-        } else
-            c++;
-    }
-    return !*c;
-}
-```
 
 ### Garbage collection
 

@@ -14,6 +14,12 @@
 
 #define HASH_SIZE 32
 
+#ifdef NDEBUG
+#  define MEMCHECK(p) if(!p) abort() /* You're doomed */
+#else
+#  define MEMCHECK(p) assert(p)
+#endif
+
 /* Anonymous structs and unions are not part of the C standard, but they are
 so useful that I can't get myself to remove them */
 typedef struct SkObj {
@@ -131,12 +137,6 @@ static void SkExpr_dtor(SkObj *e) {
         default: break;
     }
 }
-
-#ifdef NDEBUG
-#  define MEMCHECK(p) if(!p) abort() /* You're doomed */
-#else
-#  define MEMCHECK(p) assert(p)
-#endif
 
 #ifdef NDEBUG
 SkObj *sk_symbol(const char *sk_value) {
@@ -342,49 +342,129 @@ int sk_equal(SkObj *a, SkObj *b) {
     return 1;
 }
 
-void sk_write(FILE *f, SkObj *e) {
+static char *buffer_appendn(char **buf, int *n, int *a, const char *s, int len) {
+    assert(buf && n && a && s);
+    int nlen;
+    if(!*buf) {
+        *a = 32;
+        while(*a < len + 1) *a <<= 1;
+        *buf = malloc(*a);
+        MEMCHECK(*buf);
+        strncpy(*buf, s, len);
+        (*buf)[len] = '\0';
+        *n = len;
+        return *buf;
+    }
+    nlen = *n + len;
+    if(*a < nlen + 1) {
+        while(*a < nlen + 1) *a <<= 1;
+        *buf = realloc(*buf, *a);
+        MEMCHECK(*buf);
+    }
+    strncpy(*buf + *n, s, len);
+    *n = nlen;
+    (*buf)[nlen] = '\0';
+    return *buf;
+}
+
+static char *buffer_append(char **buf, int *n, int *a, const char *s) {
+    return buffer_appendn(buf, n, a, s, strlen(s));
+}
+
+static char *buffer_appendf(char **buf, int *n, int *a, const char *fmt, ...) {
+    va_list arg;
+    char buffer[512];
+    va_start(arg, fmt);
+    vsnprintf (buffer, sizeof(buffer)-1, fmt, arg);
+    va_end(arg);
+    return buffer_append(buf, n, a, buffer);
+}
+
+static void serialize_r(char **buf, int *n, int *a, SkObj *e) {
     if(!e)
-        fputs("'() ", f);
+        buffer_append(buf, n, a, "'() ");
     else switch(e->type) {
-        case CFUN: fprintf(f,"#<cfun:%p> ", e->func); break;
-        case CDATA: fprintf(f,"<cdata:%p;%p>",e->cdtor,e->cdata); break;
-        case ERROR: fprintf(f,"#<error:%s> ", e->value); break;
-        case SYMBOL: fprintf(f,"%s ", e->value); break;
-        case TRUE: fputs("#t ", f); break;
-        case FALSE: fputs("#f ", f); break;
-        case VALUE:
-            /* FIXME: this is not great. */
-            fprintf(f, "\"%s\" ", e->value);
-            break;
+        case CFUN: buffer_appendf(buf, n, a, "#<cfun:%p> ", e->func); break;
+        case CDATA: buffer_appendf(buf, n, a, "<cdata:%p;%p>", e->cdtor, e->cdata); break;
+        case ERROR: buffer_appendf(buf, n, a, "#<error:%s> ", e->value); break;
+        case SYMBOL: buffer_appendf(buf, n, a, "%s ", e->value); break;
+        case TRUE: buffer_append(buf, n, a, "#t "); break;
+        case FALSE: buffer_append(buf, n, a, "#f "); break;
+        case VALUE: {
+            buffer_appendf(buf, n, a, "\"");
+            char *s = e->value;
+            int i = 0;
+            while(s[i]) {
+                if(s[i] < ' ') {
+                    buffer_appendn(buf, n, a, s, i);
+                    switch(s[i]) {
+                    case '\n': buffer_appendn(buf, n, a, "\\n", 2); break;
+                    case '\r': buffer_appendn(buf, n, a, "\\r", 2); break;
+                    case '\t': buffer_appendn(buf, n, a, "\\t", 2); break;
+                    case '\b': buffer_appendn(buf, n, a, "\\b", 2); break;
+                    case '\a': buffer_appendn(buf, n, a, "\\a", 2); break;
+                    default: buffer_appendf(buf, n, a, "\\%d", s[i]); break;
+                    }
+                    s += i + 1;
+                    i = 0;
+                } else if(strchr("\\\"", s[i])) {
+                    buffer_appendn(buf, n, a, s, i);
+                    buffer_appendf(buf, n, a, "\\%c", s[i]);
+                    s += i + 1;
+                    i = 0;
+                } else
+                    i++;
+            }
+            buffer_appendn(buf, n, a, s, i);
+            buffer_appendf(buf, n, a, "\" ");
+        } break;
         case CONS:
-            fputs("( ", f);
+            buffer_append(buf, n, a, "( ");
             for(;;) {
-                sk_write(f, e->car);
+                serialize_r(buf, n, a, e->car);
                 if(e->cdr) {
                     if(e->cdr->type == CONS)
                         e = e->cdr;
                     else {
-                        fputs(". ", f);
-                        sk_write(f, e->cdr);
+                        buffer_append(buf, n, a, ". ");
+                        serialize_r(buf, n, a, e->cdr);
                         break;
                     }
                 } else
                     break;
             }
-            fputs(") ", f);
+            buffer_appendf(buf, n, a, ") ");
             break;
         case LAMBDA:
-            fputs("<lambda: ", f);
-            sk_write(f, e->args);
-            fputs(": ", f);
-            sk_write(f, e->body);
-            fputs("> ",f);
+            buffer_append(buf, n, a, "(lambda ");
+            serialize_r(buf, n, a, e->args);
+            buffer_append(buf, n, a, " ");
+            serialize_r(buf, n, a, e->body);
+            buffer_append(buf, n, a, ") ");
             break;
     }
 }
 
+char *sk_serialize(SkObj *e) {
+    int n = 0, a = 256;
+    char *buf = malloc(a);
+    MEMCHECK(buf);
+    serialize_r(&buf, &n, &a, e);
+    return buf;
+}
+
 int sk_check_numeric(const char *c) {
-    return isdigit(c[0]) || (strchr("+-", c[0]) && isdigit(c[1]));
+    /*return isdigit(c[0]) || (strchr("+-", c[0]) && isdigit(c[1]));*/
+    int ds = 0, de = 0;
+    if(strchr("+-", *c))
+        c++;
+    if(!*c) return 0;
+    while(isdigit(*c) || (*c == '.' && !ds++) || ((*c == 'e' || *c == 'E') && !de++)) {
+        if((*c == 'e' || *c == 'E') && (c[1] == '-' || c[1] == '+'))
+            c++;
+        c++;
+    }
+    return !*c;
 }
 
 const char *sk_get_text(SkObj *e) {
@@ -474,7 +554,7 @@ restart:
             in++;
         }
         goto restart;
-    } else if (strchr("()'[]", *in)) {
+    } else if (strchr("()[]'", *in)) {
         tok[0] = *in;
         tok[1] ='\0';
         *rem =  ++in;
@@ -493,9 +573,8 @@ restart:
                 ++in;
                 if(isdigit(*in)) {
                     int v = *in - '0';
-                    while(isdigit(*++in)) {
+                    while(isdigit(*++in))
                         v = v * 10 + (*in - '0');
-                    }
                     tok[i++] = v & 0x7F;
                 } else {
                     switch(*in) {
@@ -681,28 +760,6 @@ static int valid_lambda(SkObj *l) {
     return sk_is_list(l->body);
 }
 
-SkObj *sk_apply(SkEnv *env, SkObj *f, SkObj *a) {
-    SkObj *result;
-    if(!sk_is_list(a))
-        return sk_error("'sk_apply' expects a list of arguments");
-    if(f->type == CFUN) {
-        assert(f->func);
-        result = f->func(env, a);
-    } else if(f->type == LAMBDA) {
-        SkEnv *new_env = sk_env_create(env);
-        SkObj *p = f->args;
-        for(; a && p; a = a->cdr, p = p->cdr)
-            sk_env_put(new_env, sk_get_text(p->car), a->car ? rc_retain(a->car) : NULL);
-        if((a && !p) || (p && !a))
-            result = sk_errorf("too %s arguments passed to lambda", p ? "few" : "many");
-        else
-            result = sk_eval(new_env, f->body);
-        rc_release(new_env);
-    } else
-        result = sk_error("'sk_apply' on something that is not a procedure");
-    return result;
-}
-
 SkObj *sk_eval(SkEnv *env, SkObj *e) {
     SkObj *result = NULL, *args = NULL;
     SkEnv *new_env = NULL;
@@ -717,7 +774,7 @@ SkObj *sk_eval(SkEnv *env, SkObj *e) {
             result = NULL;
         else if(e->type == SYMBOL) {
             SkObj *r = sk_env_get(env, sk_get_text(e));
-            result = sk_is_error(r) ? r : rc_retain(r); /* dont retain errors */
+            result = sk_is_error(r) ? r : rc_retain(r); /* don't retain errors */
         } else if(e->type == CONS) {
             const char *what = sk_get_text(e->car);
             if(!sk_is_list(e)) {
@@ -753,7 +810,7 @@ SkObj *sk_eval(SkEnv *env, SkObj *e) {
                         break;
                     }
                 } else {
-                    /* `(define v SkObj)` form */
+                    /* `(define v expr)` form */
                     varname = sk_get_text(e->car);
                     result = sk_eval(env, e->cdr->car);
                     if(sk_is_error(result))
@@ -787,10 +844,8 @@ SkObj *sk_eval(SkEnv *env, SkObj *e) {
                     }
                     const char *name = sk_get_text(a->car->car);
                     SkObj *v = sk_eval(env, a->car->cdr->car);
-                    if(sk_is_error(v)) {
-                        result = v;
+                    if(sk_is_error(v) && (result = v))
                         goto end_let;
-                    }
                     sk_env_put(new_env, name, v);
                 }
                 for(; b && b->cdr; b = b->cdr) {
@@ -846,10 +901,9 @@ end_let:
                 int ans = 1;
                 for(e = e->cdr; ans && e; e = e->cdr) {
                     SkObj *a = sk_eval(env, e->car);
-                    if(sk_is_error(a)) {
-                        result = a;
+                    if(sk_is_error(a) && (result = a))
                         goto end;
-                    } else if(!sk_is_true(a))
+                    else if(!sk_is_true(a))
                         ans = 0;
                     rc_release(a);
                 }
@@ -858,19 +912,18 @@ end_let:
                 int ans = 0;
                 for(e = e->cdr; !ans && e; e = e->cdr) {
                     SkObj *a = sk_eval(env, e->car);
-                    if(sk_is_error(a)) {
-                        result = a;
+                    if(sk_is_error(a) && (result = a))
                         goto end;
-                    } else if(sk_is_true(a))
+                    else if(sk_is_true(a))
                         ans = 1;
                     rc_release(a);
                 }
                 result = sk_boolean(ans);
             } else if(!strcmp(what, "quote")) {
-                if(sk_length(e) != 2)
+                if(!e->cdr)
                     result = sk_error("bad quote");
                 else
-                    result = e->cdr->car ? rc_retain(e->cdr->car) : NULL;
+                    result = rc_retain(e->cdr->car);
             } else if(!strcmp(what, "begin")) {
                 for(e = e->cdr; e && e->cdr; e = e->cdr) {
                     rc_release(result);
@@ -942,6 +995,13 @@ SkObj *sk_eval_str(SkEnv *global, const char *text) {
     return result;
 }
 
+SkObj *sk_apply(SkEnv *env, SkObj *f, SkObj *a) {
+    SkObj *c = sk_cons(rc_retain(f), rc_retain(a));
+    SkObj *r = sk_eval(env, c);
+    rc_release(c);
+    return r;
+}
+
 #if 0
 /* TODO: use this instead of the external ref counter */
 typedef struct refobj {
@@ -989,37 +1049,25 @@ void rc_set_dtor(void *p, ref_dtor dtor) {
 }
 #endif
 
-static SkObj *bif_write(SkEnv *env, SkObj *e) {
-    if(!e) return sk_error("'write' expects an argument");
-    for(; e; e = e->cdr) {
-        /* TODO: Maybe the `sk_write()` function should rather
-        serialize the object to a string. Then we can use the `bif_display()`
-        to display the data. If we implement `serialize()` as a BIF, then
-        we can implement `write` as
-        `(define (write x) (display (serialize x)))`*/
-        sk_write(stdout, sk_car(e));
-        fputc('\n', stdout);
-    }
-    return NULL;
+static SkObj *bif_serialize(SkEnv *env, SkObj *e) {
+    if(sk_is_null(sk_car(e)))
+        return sk_error("'serialize' expects an argument");
+    char *text = sk_serialize(sk_car(e));
+    return sk_value_o(text);
 }
 
 static SkObj *bif_display(SkEnv *env, SkObj *e) {
-    /* TODO: Maybe instead of hardcoding stdout here we
-    can store the destination where to write to in CDATA.
-    On the other hand, maybe the user (of the API) can just
-    replace the `display` function with one that suits his needs.
-    */
-    for(; e; e = e->cdr) {
+    for(; e; e = sk_cdr(e)) {
         fputs(sk_get_text(sk_car(e)), stdout);
         fputc(sk_cdr(e) ? ' ' : '\n', stdout);
     }
     return NULL;
 }
 
-/* `(sk_apply + '(3 4 5))` or `(sk_apply + (list 1 2))` */
+/* `(apply + '(3 4 5))` or `(apply + (list 1 2))` */
 static SkObj *bif_apply(SkEnv *env, SkObj *e) {
     if(sk_length(e) != 2 || !sk_is_list(sk_cadr(e)))
-        return sk_error("'sk_apply' expects a function and a list of arguments");
+        return sk_error("'apply' expects a function and a list of arguments");
     return sk_apply(env, sk_car(e), sk_cadr(e));
 }
 
@@ -1072,11 +1120,11 @@ static SkObj *bif_eq(SkEnv *env, SkObj *e) {
     return sk_boolean(e->car == e->cdr->car);
 }
 
-#define ARITH_FUNCTION(cname, operator)       \
-static SkObj *cname(SkEnv *env, SkObj *e) {       \
+#define ARITH_FUNCTION(cname, operator)          \
+static SkObj *cname(SkEnv *env, SkObj *e) {      \
     if(!e) return sk_number(0);                  \
     double res = atof(sk_get_text(e->car));      \
-    for(e = e->cdr; e; e = e->cdr)            \
+    for(e = e->cdr; e; e = e->cdr)               \
         res operator atof(sk_get_text(e->car));  \
     return sk_number(res);                       \
 }
@@ -1108,8 +1156,8 @@ static SkObj *bif_mod(SkEnv *env, SkObj *e) {
     return sk_number(res);
 }
 
-#define COMPARE_FUNCTION(cname, name, operator)             \
-static SkObj *cname(SkEnv *env, SkObj *e) {                     \
+#define COMPARE_FUNCTION(cname, name, operator)                \
+static SkObj *cname(SkEnv *env, SkObj *e) {                    \
     if(sk_length(e) < 2)                                       \
         return sk_error("'" name "' expects two arguments");   \
     const char *a = sk_get_text(e->car);                       \
@@ -1123,11 +1171,11 @@ COMPARE_FUNCTION(bif_lt, "<", atof(a) < atof(b))
 COMPARE_FUNCTION(bif_le, "<=", atof(a) <= atof(b))
 
 static SkObj *bif_map(SkEnv *env, SkObj *e) {
-    if(sk_length(e) < 2 || !sk_is_procedure(e->car) || !sk_is_list(e->cdr->car))
+    if(!sk_is_procedure(sk_car(e)) || !sk_is_list(sk_cadr(e)))
         return sk_error("'map' expects a procedure and a list");
-    SkObj *f = e->car, *result = NULL, *last = NULL;
-    for(e = e->cdr->car; e; e = e->cdr) {
-        SkObj *a = sk_cons(rc_retain(e->car), NULL);
+    SkObj *f = sk_car(e), *result = NULL, *last = NULL;
+    for(e = sk_cadr(e); e; e = sk_cdr(e)) {
+        SkObj *a = sk_cons(rc_retain(sk_car(e)), NULL);
         SkObj *res = sk_apply(env, f, a);
         rc_release(a);
         if(sk_is_error(res)) {
@@ -1140,18 +1188,18 @@ static SkObj *bif_map(SkEnv *env, SkObj *e) {
 }
 
 static SkObj *bif_filter(SkEnv *env, SkObj *e) {
-    if(sk_length(e) < 2 || !sk_is_procedure(e->car) || !sk_is_list(e->cdr->car))
+    if(!sk_is_procedure(sk_car(e)) || !sk_is_list(sk_cadr(e)))
         return sk_error("'filter' expects a procedure and a list");
-    SkObj *f = e->car, *result = NULL, *last = NULL;
-    for(e = e->cdr->car; e; e = e->cdr) {
-        SkObj *a = sk_cons(rc_retain(e->car), NULL);
+    SkObj *f = sk_car(e), *result = NULL, *last = NULL;
+    for(e = sk_cadr(e); e; e = sk_cdr(e)) {
+        SkObj *a = sk_cons(rc_retain(sk_car(e)), NULL);
         SkObj *res = sk_apply(env, f, a);
         rc_release(a);
         if(sk_is_error(res)) {
             rc_release(result);
             return res;
         } else if(sk_is_true(res))
-            list_append1(&result, rc_retain(e->car), &last);
+            list_append1(&result, rc_retain(sk_car(e)), &last);
         rc_release(res);
     }
     return result;
@@ -1161,13 +1209,10 @@ static SkObj *bif_append(SkEnv *env, SkObj *e) {
     if(sk_length(e) < 2 || !sk_is_list(e->car) || !sk_is_list(e->cdr->car))
         return sk_error("'append' expects two lists");
     SkObj *x, *result = NULL, *last = NULL;
-    for(x = e->car; x; x = x->cdr)
-        list_append1(&result, rc_retain(x->car), &last);
-
-    // This neccessary? Can't we just say last->cdr = retain(e->cdr->car)?
-    for(x = e->cdr->car; x; x = x->cdr)
-        list_append1(&result, rc_retain(x->car), &last);
-
+    /* Need to shallow copy the first list, but not the second */
+    for(x = sk_car(e); x; x = sk_cdr(x))
+        list_append1(&result, rc_retain(sk_car(x)), &last);
+    last->cdr = rc_retain(sk_cadr(e));
     return result;
 }
 
@@ -1176,21 +1221,12 @@ static SkObj *bif_string_length(SkEnv *env, SkObj *e) {
 }
 
 static SkObj *bif_string_append(SkEnv *env, SkObj *e) {
-    size_t n = 0, m;
     char *buf = NULL;
-    for(; e; e = sk_cdr(e)) {
-        const char *s = sk_get_text(sk_car(e));
-        m = strlen(s);
-        buf = realloc(buf, n + m + 1);
-        MEMCHECK(buf);
-        strncpy(buf + n, s, m);
-        n += m;
-    }
+    int n, a;
+    for(; e; e = sk_cdr(e))
+        buffer_append(&buf, &n, &a, sk_get_text(sk_car(e)));
     if(!buf) return sk_value("");
-    assert(strlen(buf) == n);
-    buf[n] = '\0';
-    e = sk_value_o(buf);
-    return e;
+    return sk_value_o(buf);
 }
 
 static SkObj *bif_string_split(SkEnv *env, SkObj *e) {
@@ -1282,6 +1318,40 @@ static SkObj *bif_string_trim(SkEnv *env, SkObj *e) {
     return r;
 }
 
+static SkObj *bif_string_find(SkEnv *env, SkObj *e) {
+    const char *haystack = sk_get_text(sk_car(e));
+    const char *needle = sk_get_text(sk_cadr(e));
+    if(haystack[0] == '\0')
+        return NULL;
+    if(needle[0] == '\0')
+        return sk_error("`string-find` requires a haystack and a needle");
+    char *found = strstr(haystack, needle);
+    if(!found)
+        return NULL;
+    return sk_number(found - haystack);
+}
+
+static SkObj *bif_string_replace(SkEnv *env, SkObj *e) {
+    const char *str, *srch, *rep;
+    char *buf = NULL, *find;
+    int n, a, sl;
+
+    str = sk_get_text(sk_car(e));
+    srch = sk_get_text(sk_cadr(e));
+    rep = sk_get_text(sk_car(sk_cddr(e)));
+
+    sl = strlen(srch);
+    if(!sl) return rc_retain(sk_car(e));
+
+    while((find = strstr(str, srch))) {
+        buffer_appendn(&buf, &n, &a, str, find - str);
+        buffer_append(&buf, &n, &a, rep);
+        str = find + sl;
+    }
+    buffer_append(&buf, &n, &a, str);
+    return sk_value_o(buf);
+}
+
 COMPARE_FUNCTION(bif_string_eq, "string=?", !strcmp(a, b))
 COMPARE_FUNCTION(bif_string_lt, "string<?", strcmp(a, b) < 0)
 
@@ -1321,8 +1391,10 @@ static SkObj *bif_pow(SkEnv *env, SkObj *e) {
 SkEnv *sk_global_env() {
     SkEnv *global = sk_env_create(NULL);
 
-    /** `(write var)` - writes a serialized variable to `stdout` */
-    sk_env_put(global, "write", sk_cfun(bif_write));
+    /** `(serialize val)` - Serializes a value into a string */
+    sk_env_put(global, "serialize", sk_cfun(bif_serialize));
+    /** `(write val)` - writes a serialized value to `stdout` */
+    TEXT_LIB(global,"(define (write val) (display (serialize val)))");
     /** `(display str)` - writes string to `stdout` */
     sk_env_put(global, "display", sk_cfun(bif_display));
     /** `(cons car cdr)` - Creates a cons cell with the given car and cdr */
@@ -1341,21 +1413,34 @@ SkEnv *sk_global_env() {
     /** `(length L)` - finds the length of the list `L` */
     sk_env_put(global, "length", sk_cfun(bif_length));
 
+    /** `(list? x)` - returns `#t` if `x` is a list */
     sk_env_put(global, "list?", sk_cfun(bif_is_list));
+    /** `(null? x)` - returns `#t` if `x` is null (also represented as `'()`) */
     sk_env_put(global, "null?", sk_cfun(bif_is_null));
+    /** `(symbol? x)` - returns `#t` if `x` is a symbol */
     sk_env_put(global, "symbol?", sk_cfun(bif_is_symbol));
+    /** `(pair? x)` - returns `#t` if `x` is a pair (a cons cell) */
     sk_env_put(global, "pair?", sk_cfun(bif_is_pair));
+    /** `(procedure? x)` - returns `#t` if `x` is a callable procedure (a lambda or a CFun object) */
     sk_env_put(global, "procedure?", sk_cfun(bif_is_procedure));
+    /** `(cdata? x)` - returns `#t` if `x` is a CData object */
     sk_env_put(global, "cdata?", sk_cfun(bif_is_cdata));
+    /** `(value? x)` - returns `#t` if `x` is a value object */
     sk_env_put(global, "value?", sk_cfun(bif_is_value));
+    /** `(string? x)` - returns `#t` if `x` is a string value object */
     TEXT_LIB(global,"(define (string? x) (and (value? x) (not (number? x))))");
+    /** `(number? x)` - returns `#t` if `x` is a number value object */
     sk_env_put(global, "number?", sk_cfun(bif_is_number));
+    /** `(zero? x)` - returns `#t` if `x` is 0 */
     TEXT_LIB(global,"(define (zero? x) (and (number? x) (= 0 x)))");
+    /** `(boolean? x)` - returns `#t` if `x` is a boolean object (`#t` or `#f`) */
     sk_env_put(global, "boolean?", sk_cfun(bif_is_boolean));
+    /** `(true? x)` - returns `#t` if `x` evaluates to truth */
+    TEXT_LIB(global,"(define (true? x) (if x #t #f))");
 
     /** `(equal? x y)` - Compares `x` and `y` for equality */
     sk_env_put(global, "equal?", sk_cfun(bif_equal));
-    /** `(eq? x y)` - returns true if and only if `x` and `y` are the same object */
+    /** `(eq? x y)` - returns true if and only if `x` and `y` references the same object */
     sk_env_put(global, "eq?", sk_cfun(bif_eq));
     /** `(not x)` - logical not. Returns `#f` if and only if `x` evaluates to `#t` */
     sk_env_put(global, "not", sk_cfun(bif_not));
@@ -1395,6 +1480,8 @@ SkEnv *sk_global_env() {
     sk_env_put(global, "string-length?", sk_cfun(bif_string_length));
     /** `(string-append s1 s2...)` - Appends all parameters into a new string. */
     sk_env_put(global, "string-append", sk_cfun(bif_string_append));
+    /** `(string-replace str find repl)` - */
+    sk_env_put(global, "string-replace", sk_cfun(bif_string_replace));
     /** `(string-split str sep)` - Splits a string `str` into a list of substrings */
     sk_env_put(global, "string-split", sk_cfun(bif_string_split));
     /** `(substring str start [end])` - Retrieves the substring of `str` between `start` and `end`. */
@@ -1409,13 +1496,24 @@ SkEnv *sk_global_env() {
     sk_env_put(global, "string-char", sk_cfun(bif_string_char));
     /** `(string-trim s)` - Trims whitespace from the start and end of a string `s` */
     sk_env_put(global, "string-trim", sk_cfun(bif_string_trim));
-    TEXT_LIB(global,"(define (non-empty-string? x) (not (= 0 (string-length? x))))");
+    /** `(string-find h n)` - Searches for the substring `n` in the string `h` and returns the position, `'()` if not found. */
+    sk_env_put(global, "string-find", sk_cfun(bif_string_find));
+
+    /** `(string-contains? h n)` - Returns `#t` if the string `h` contains the substring `n`. */
+    TEXT_LIB(global,"(define (string-contains? h n) (not (null? (string-find h n))))");
+    /** `(string-prefix? h n)` - Returns `#t` if the string `h` starts with the substring `n`. */
+    TEXT_LIB(global,"(define (string-prefix? h n) (true? (zero? (string-find h n))))");
+    /** `(string-suffix? h n)` - Returns `#t` if the string `h` ends with the substring `n`. */
+    TEXT_LIB(global,"(define (string-suffix? h n) (= (string-find h n) (- (string-length? h) (string-length? n)) ))");
+    /** `(non-empty-string? s)` - Returns `#t` if the string is not empty. */
+    TEXT_LIB(global,"(define (non-empty-string? s) (not (= 0 (string-length? s))))");
     /** `(string=? s1 s2)`, `(string<? s1 s2)`, `(string<=? s1 s2)`, `(string>? s1 s2)` and `(string>=? s1 s2)` - string comparisons between `s1` and `s2` */
     sk_env_put(global, "string=?", sk_cfun(bif_string_eq));
     sk_env_put(global, "string<?", sk_cfun(bif_string_lt));
     TEXT_LIB(global,"(define (string<=? a b) (or (string<? a b) (string=? a b)))");
     TEXT_LIB(global,"(define (string>? a b) (not (string<=? a b)))");
     TEXT_LIB(global,"(define (string>=? a b) (not (string<? a b)))");
+
     /** `(sin x)` - sine of `x` */
     sk_env_put(global, "sin", sk_cfun(bif_sin));
     /** `(cos x)` - cosine of `x` */
