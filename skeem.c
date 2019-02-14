@@ -17,7 +17,7 @@
 /* Anonymous structs and unions are not part of the C standard, but they are
 so useful that I can't get myself to remove them */
 typedef struct Expr {
-    enum {SYMBOL, VALUE, CONS, CFUN, TRUE, FALSE, LAMBDA, ERROR} type;
+    enum {SYMBOL, VALUE, CONS, CFUN, TRUE, FALSE, LAMBDA, CDATA, ERROR} type;
     union {
         char *value;
         c_function func;
@@ -27,6 +27,9 @@ typedef struct Expr {
         struct {
            struct Expr *args, *body; /* for lambdas */
         };
+    struct {
+        void *cdata; cdata_dtor cdtor;
+    };
     };
 } Expr;
 
@@ -130,6 +133,7 @@ int equal(Expr *a, Expr *b) {
         return 0;
     else switch(a->type) {
         case CFUN: return a->func == b->func;
+        case CDATA: return a->cdata == b->cdata && a->cdtor == b->cdtor;
         case ERROR: return 0;
         case SYMBOL: return !strcmp(a->value, b->value);
         case VALUE: return !strcmp(a->value, b->value);
@@ -141,42 +145,43 @@ int equal(Expr *a, Expr *b) {
     return 1;
 }
 
-void write(Expr *e) {
+void write(FILE *f, Expr *e) {
     if(!e)
-        printf("() ");
+        fputs("() ", f);
     else switch(e->type) {
-        case CFUN: printf("#<cfun:%p> ", e->func); break;
-        case ERROR: printf("#<error:%s> ", e->value); break;
-        case SYMBOL: printf("%s ", e->value); break;
-        case TRUE: printf("#t "); break;
-        case FALSE: printf("#f "); break;
+        case CFUN: fprintf(f,"#<cfun:%p> ", e->func); break;
+        case CDATA: fprintf(f,"<cdata:%p;%p>",e->cdtor,e->cdata); break;
+        case ERROR: fprintf(f,"#<error:%s> ", e->value); break;
+        case SYMBOL: fprintf(f,"%s ", e->value); break;
+        case TRUE: fputs("#t ", f); break;
+        case FALSE: fputs("#f ", f); break;
         case VALUE:
             /* FIXME: this is not great. */
-            printf("\"%s\" ", e->value);
+            fprintf(f, "\"%s\" ", e->value);
             break;
         case CONS:
-            printf("( ");
+            fputs("( ", f);
             for(;;) {
-                write(e->car);
+                write(f, e->car);
                 if(e->cdr) {
                     if(e->cdr->type == CONS)
                         e = e->cdr;
                     else {
-                        printf(". ");
-                        write(e->cdr);
+                        fputs(". ", f);
+                        write(f, e->cdr);
                         break;
                     }
                 } else
                     break;
             }
-            printf(") ");
+            fputs(") ", f);
             break;
         case LAMBDA:
-            printf("<lambda: ");
-            write(e->args);
-            printf(": ");
-            write(e->body);
-            printf("> ");
+            fputs("<lambda: ", f);
+            write(f, e->args);
+            fputs(": ", f);
+            write(f, e->body);
+            fputs("> ",f);
             break;
     }
 }
@@ -185,12 +190,13 @@ static void expr_dtor(Expr *e) {
     switch(e->type) {
         case ERROR:
         case SYMBOL:
-        case VALUE: /* FIXME free(e->value); */ break;
+        case VALUE: free(e->value); break;
         case CONS:
             if(e->car) rc_release(e->car);
             if(e->cdr) rc_release(e->cdr);
             break;
         case LAMBDA: if(e->args) rc_release(e->args); rc_release(e->body); break;
+        case CDATA: if(e->cdtor) e->cdtor(e->cdata); break;
         default: break;
     }
 }
@@ -265,7 +271,6 @@ Expr *boolean_(int val, const char *file, int line) {
     return e;
 }
 
-
 #define RESULT_SIZE 64
 #define PRECISION   30
 #ifdef NDEBUG
@@ -326,8 +331,36 @@ Expr *cfun_(c_function func, const char *file, int line) {
     return e;
 }
 
+#ifdef NDEBUG
+Expr *cdata(void *cdata, cdata_dtor dtor) {
+    Expr *e = rc_alloc(sizeof *e);
+#else
+Expr *cdata_(void *cdata, cdata_dtor dtor, const char *file, int line) {
+    Expr *e = rc_alloc_(sizeof *e, file, line);
+#endif
+    MEMCHECK(e);
+    rc_set_dtor(e, (ref_dtor)expr_dtor);
+    e->type = CDATA;
+    e->cdata = cdata;
+    e->cdtor = dtor;
+    return e;
+}
+
+void *get_cdata(Expr *e) {
+    if(!e || e->type != CDATA) return NULL;
+    return e->cdata;
+}
+
+cdata_dtor get_cdtor(Expr *e) {
+    if(!e || e->type != CDATA) return NULL;
+    return e->cdtor;
+}
+
 /* O(1) way to append items to a list,
-but it needs a separate pointer to track the last item in the list
+but it needs a separate pointer to track the last item in the list.
+
+Also, be careful to only use it when constructing new lists as existing
+lists are supposed to be immutable.
 */
 #ifdef NDEBUG
 static void list_append1(Expr **list, Expr *a, Expr **last) {
@@ -553,6 +586,18 @@ int is_true(Expr *e) {
     return e && e->type != FALSE;
 }
 
+int is_procedure(Expr *e) {
+    return e && (e->type == CFUN || e->type == LAMBDA);
+}
+
+int is_number(Expr *e) {
+    return e && e->type == VALUE && check_numeric(e->value);
+}
+
+int is_cdata(Expr *e) {
+    return e && e->type == CDATA;
+}
+
 int is_list(Expr *e) {
     for(; e; e = e->cdr)
         if(e->type != CONS)
@@ -560,12 +605,14 @@ int is_list(Expr *e) {
     return 1;
 }
 
-int is_procedure(Expr *e) {
-    return e && (e->type == CFUN || e->type == LAMBDA);
+Expr *car(Expr *e) {
+    if(!e || e->type != CONS) return NULL;
+    return e->car;
 }
 
-int is_number(Expr *e) {
-    return e && e->type == VALUE && check_numeric(e->value);
+Expr *cdr(Expr *e) {
+    if(!e || e->type != CONS) return NULL;
+    return e->cdr;
 }
 
 int length(Expr *e) {
@@ -633,10 +680,7 @@ Expr *eval(Env *env, Expr *e) {
         }
         if(!e)
             result = NULL;
-        else if(e->type == VALUE || e->type == TRUE || e->type == FALSE ||
-            e->type == CFUN || e->type == LAMBDA || e->type == ERROR) {
-            result = rc_retain(e);
-        } else if(e->type == SYMBOL) {
+        else if(e->type == SYMBOL) {
             Expr *r = env_get(env, get_text(e));
             if(is_error(r))
                 result = r;
@@ -843,8 +887,12 @@ end_let:
                 } else
                     result = error("attempt to call something that is not a function");
             }
-        } else
-            result = error("don't know how to `eval()` this :(");
+        } else {
+            assert (e->type == VALUE || e->type == TRUE || e->type == FALSE ||
+                    e->type == CFUN || e->type == CDATA || e->type == LAMBDA ||
+                    e->type == ERROR);
+            result = rc_retain(e);
+        }
         break;
     } /* for(;;) */
 end:
@@ -856,12 +904,12 @@ end:
 }
 
 Expr *eval_str(Env *global, const char *text) {
-	Expr *program = parse_stmts(text), *result;
-	if(is_error(program))
-		return program;
-	result = eval(global, program);
-	rc_release(program);
-	return result;
+    Expr *program = parse_stmts(text), *result;
+    if(is_error(program))
+        return program;
+    result = eval(global, program);
+    rc_release(program);
+    return result;
 }
 
 static Expr *bif_write(Env *env, Expr *e) {
@@ -869,7 +917,12 @@ static Expr *bif_write(Env *env, Expr *e) {
     if(!e) return error("'write' expects an argument");
     for(; e; e = e->cdr) {
         last = e->car;
-        write(last);
+        /* TODO: Maybe the `write()` function should rather
+        serialize the object to a string. Then we can use the `bif_display()`
+        to display the data. If we implement `serialize()` as a BIF, then
+        we can implement `write` as
+        `(define (write x) (display (serialize x)))`*/
+        write(stdout, last);
         fputc('\n', stdout);
     }
     return rc_retain(last);
@@ -877,6 +930,11 @@ static Expr *bif_write(Env *env, Expr *e) {
 
 static Expr *bif_display(Env *env, Expr *e) {
     const char *txt = "";
+    /* TODO: Maybe instead of hardcoding stdout here we
+    can store the destination where to write to in CDATA.
+    On the other hand, maybe the user (of the API) can just
+    replace the `display` function with one that suits his needs.
+    */
     for(; e; e = e->cdr) {
         txt = get_text(e->car);
         fputs(txt, stdout);
@@ -889,7 +947,7 @@ static Expr *bif_display(Env *env, Expr *e) {
 static Expr *bif_apply(Env *env, Expr *e) {
     Expr *fun, *args, *res;
     if(length(e) != 2 || !is_list(e->cdr->car))
-        return error("'apply' expects a function and arguments");
+        return error("'apply' expects a function and a list of arguments");
     fun = e->car;
     args = e->cdr->car;
     res = apply(env, fun, args);
@@ -919,12 +977,7 @@ static Expr *bif_list(Env *env, Expr *e) {
 }
 
 // predicates
-#define TYPE_FUNCTION(cname, name, returns)             \
-static Expr *cname(Env *env, Expr *e) {                 \
-    if(!e)                                              \
-        return error("'" name "' expects a parameter"); \
-    return returns;                                     \
-}
+#define TYPE_FUNCTION(cname, name, returns) static Expr *cname(Env *env, Expr *e){return (e)?(returns):error("'" name "' expects a parameter");}
 
 TYPE_FUNCTION(bif_is_list, "list?", boolean(is_list(e->car)))
 TYPE_FUNCTION(bif_length, "length?", nvalue(length(e->car)))
@@ -932,6 +985,7 @@ TYPE_FUNCTION(bif_is_null, "null?", boolean(is_null(e->car)))
 TYPE_FUNCTION(bif_is_symbol, "symbol?", boolean(is_symbol(e->car)))
 TYPE_FUNCTION(bif_is_pair, "pair?", boolean(is_cons(e->car)))
 TYPE_FUNCTION(bif_is_procedure, "procedure?", boolean(is_procedure(e->car)))
+TYPE_FUNCTION(bif_is_cdata, "cdata?", boolean(is_cdata(e->car)))
 TYPE_FUNCTION(bif_is_number, "number?", boolean(is_number(e->car)))
 TYPE_FUNCTION(bif_is_boolean, "boolean?", boolean(is_boolean(e->car)))
 TYPE_FUNCTION(bif_is_zero, "zero?", boolean(atof(get_text(e->car)) == 0.0))
@@ -1045,48 +1099,45 @@ static Expr *bif_append(Env *env, Expr *e) {
     return result;
 }
 
-void add_c_function(Env *global, const char *name, c_function function) {
-    env_put(global, name, cfun(function));
-}
-
-#define TEXT_LIB(g,t) do {Expr *x = eval_str(g, t); assert(!is_error(x));rc_release(x);} while(0)
+#define TEXT_LIB(g,t) do {Expr *x=eval_str(g,t);assert(!is_error(x));rc_release(x);} while(0)
 
 Env *global_env() {
     Env *global = env_create(NULL);
 
-    add_c_function(global, "write", bif_write);
-    add_c_function(global, "display", bif_display);
-    add_c_function(global, "apply", bif_apply);
-    add_c_function(global, "cons", bif_cons);
-    add_c_function(global, "car", bif_car);
-    add_c_function(global, "cdr", bif_cdr);
-    add_c_function(global, "list", bif_list);
-    add_c_function(global, "list?", bif_is_list);
-    add_c_function(global, "length", bif_length);
-    add_c_function(global, "null?", bif_is_null);
-    add_c_function(global, "symbol?", bif_is_symbol);
-    add_c_function(global, "pair?", bif_is_pair);
-    add_c_function(global, "procedure?", bif_is_procedure);
-    add_c_function(global, "number?", bif_is_number);
-    add_c_function(global, "boolean?", bif_is_boolean);
-    add_c_function(global, "equal?", bif_equal);
-    add_c_function(global, "eq?", bif_eq);
-    add_c_function(global, "zero?", bif_is_zero);
-    add_c_function(global, "not", bif_not);
-    add_c_function(global, "+", bif_add);
-    add_c_function(global, "-", bif_sub);
-    add_c_function(global, "*", bif_mul);
-    add_c_function(global, "/", bif_div);
-    add_c_function(global, "%", bif_mod);     /* TODO: I don't think real scheme uses the % operator */
-    add_c_function(global, "=", bif_number_eq);
-    add_c_function(global, ">", bif_gt);
-    add_c_function(global, "<", bif_lt);
-    add_c_function(global, ">=", bif_ge);
-    add_c_function(global, "<=", bif_le);
-    add_c_function(global, "map", bif_map);
-    add_c_function(global, "filter", bif_filter);
-    add_c_function(global, "append", bif_append);
-    
+    env_put(global, "write", cfun(bif_write));
+    env_put(global, "display", cfun(bif_display));
+    env_put(global, "apply", cfun(bif_apply));
+    env_put(global, "cons", cfun(bif_cons));
+    env_put(global, "car", cfun(bif_car));
+    env_put(global, "cdr", cfun(bif_cdr));
+    env_put(global, "list", cfun(bif_list));
+    env_put(global, "list?", cfun(bif_is_list));
+    env_put(global, "length", cfun(bif_length));
+    env_put(global, "null?", cfun(bif_is_null));
+    env_put(global, "symbol?", cfun(bif_is_symbol));
+    env_put(global, "pair?", cfun(bif_is_pair));
+    env_put(global, "procedure?", cfun(bif_is_procedure));
+    env_put(global, "cdata?", cfun(bif_is_cdata));
+    env_put(global, "number?", cfun(bif_is_number));
+    env_put(global, "boolean?", cfun(bif_is_boolean));
+    env_put(global, "equal?", cfun(bif_equal));
+    env_put(global, "eq?", cfun(bif_eq));
+    env_put(global, "zero?", cfun(bif_is_zero));
+    env_put(global, "not", cfun(bif_not));
+    env_put(global, "+", cfun(bif_add));
+    env_put(global, "-", cfun(bif_sub));
+    env_put(global, "*", cfun(bif_mul));
+    env_put(global, "/", cfun(bif_div));
+    env_put(global, "%", cfun(bif_mod));
+    env_put(global, "=", cfun(bif_number_eq));
+    env_put(global, ">", cfun(bif_gt));
+    env_put(global, "<", cfun(bif_lt));
+    env_put(global, ">=", cfun(bif_ge));
+    env_put(global, "<=", cfun(bif_le));
+    env_put(global, "map", cfun(bif_map));
+    env_put(global, "filter", cfun(bif_filter));
+    env_put(global, "append", cfun(bif_append));
+
     TEXT_LIB(global,"(define (fold f i L) (if (null? L) i (fold f (f (car L) i) (cdr L))))");
     TEXT_LIB(global,"(define (fold-right f i L) (if (null? L) i (f (car L) (fold-right f i (cdr L)))))");
     TEXT_LIB(global,"(define (reverse l) (fold cons '() l))");

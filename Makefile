@@ -9,9 +9,10 @@ LDFLAGS =
 # Add your source files here:
 SOURCES=skeem.c refcnt.c main.c
 
-OBJECTS=$(SOURCES:.c=.o)
-
+EXECUTABLE=skeem
 DISTFILE=skeem.zip
+
+OBJECTS=$(SOURCES:.c=.o)
 
 ifeq ($(BUILD),debug)
 # Debug
@@ -24,12 +25,16 @@ CFLAGS += -O2 -DNDEBUG
 LDFLAGS += -s
 endif
 
-all: skeem.exe
+ifeq ($(OS),Windows_NT)
+  EXECUTABLE:=$(EXECUTABLE).exe
+endif
+
+all: $(EXECUTABLE)
 
 debug:
 	make BUILD=debug
 
-skeem.exe: $(OBJECTS)
+$(EXECUTABLE): $(OBJECTS)
 	$(CC) $^ $(LDFLAGS) -o $@
 
 .c.o:
@@ -42,7 +47,7 @@ refcnt.o : refcnt.c refcnt.h
 .PHONY : clean
 
 clean:
-	-rm -f *.exe $(DISTFILE)
+	-rm -f $(EXECUTABLE) $(DISTFILE)
 	-rm -f *.o
 
 dist: clean

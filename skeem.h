@@ -17,7 +17,7 @@ Expr *env_put(Env *env, const char *name, Expr *e);
 
 int equal(Expr *a, Expr *b);
 
-void write(Expr *e);
+void write(FILE *f, Expr *e);
 
 #ifdef NDEBUG
 Expr *symbol(const char *value);
@@ -77,6 +77,20 @@ Expr *cfun(c_function func);
 Expr *cfun_(c_function func, const char *file, int line);
 #endif
 
+/* TODO: The `cdata_dtor` has the same prototype as the
+reference counter's `ref_dtor`, so I could combine them */
+typedef void (*cdata_dtor)(void *);
+
+#ifdef NDEBUG
+Expr *cdata(void *cdata, cdata_dtor dtor);
+#else
+#  define cdata(c,d) cdata_(c,d, __FILE__, __LINE__)
+Expr *cdata_(void *cdata, cdata_dtor dtor, const char *file, int line);
+#endif
+
+void *get_cdata(Expr *e);
+cdata_dtor get_cdtor(Expr *e);
+
 int check_numeric(const char *c);
 
 Expr *parse(const char *text);
@@ -88,9 +102,7 @@ Expr *parse_stmts(const char *text);
 
 const char *get_text(Expr *e);
 
-int is_nil(Expr *e);
-
-int is_list(Expr *e);
+int is_null(Expr *e);
 
 int is_symbol(Expr *e);
 
@@ -105,6 +117,14 @@ int is_procedure(Expr *e);
 int is_number(Expr *e);
 
 int is_error(Expr *e);
+
+int is_cdata(Expr *e);
+
+int is_list(Expr *e);
+
+Expr *car(Expr *e);
+
+Expr *cdr(Expr *e);
 
 int length(Expr *e);
 
