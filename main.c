@@ -52,7 +52,7 @@ int main(int argc, char *argv[]) {
             Expr *result = eval_str(global, buffer);
             if(is_error(result)) {
                 fprintf(stderr, "error: %s\n", get_text(result));
-            } else {
+            } else if(!is_null(result)) {
                 write(stdout, result);
                 fputs("\n", stdout);
             }
@@ -157,7 +157,7 @@ static Expr *bif_feof(Env *env, Expr *e) {
     if(is_null(file) || !is_cdata(file) || get_cdtor(file) != bif_fclose)
         return error("'feof' expects a file as its first parameter");
     assert(get_cdata(file));
-	FILE * f=get_cdata(file);
+    FILE * f = get_cdata(file);
     return boolean(feof(f));
 }
 

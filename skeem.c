@@ -27,9 +27,9 @@ typedef struct Expr {
         struct {
            struct Expr *args, *body; /* for lambdas */
         };
-    struct {
-        void *cdata; cdata_dtor cdtor;
-    };
+        struct {
+            void *cdata; cdata_dtor cdtor;
+        };
     };
 } Expr;
 
@@ -147,7 +147,7 @@ int equal(Expr *a, Expr *b) {
 
 void write(FILE *f, Expr *e) {
     if(!e)
-        fputs("() ", f);
+        fputs("'() ", f);
     else switch(e->type) {
         case CFUN: fprintf(f,"#<cfun:%p> ", e->func); break;
         case CDATA: fprintf(f,"<cdata:%p;%p>",e->cdtor,e->cdata); break;
@@ -590,6 +590,10 @@ int is_procedure(Expr *e) {
     return e && (e->type == CFUN || e->type == LAMBDA);
 }
 
+int is_value(Expr *e) {
+    return e && e->type == VALUE;
+}
+
 int is_number(Expr *e) {
     return e && e->type == VALUE && check_numeric(e->value);
 }
@@ -682,10 +686,7 @@ Expr *eval(Env *env, Expr *e) {
             result = NULL;
         else if(e->type == SYMBOL) {
             Expr *r = env_get(env, get_text(e));
-            if(is_error(r))
-                result = r;
-            else
-                result = r ? rc_retain(r) : NULL;
+            result = is_error(r) ? r : rc_retain(r); /* dont retain errors */
         } else if(e->type == CONS) {
             const char *what = get_text(e->car);
             if(!is_list(e)) {
@@ -913,67 +914,59 @@ Expr *eval_str(Env *global, const char *text) {
 }
 
 static Expr *bif_write(Env *env, Expr *e) {
-    Expr *last = NULL;
     if(!e) return error("'write' expects an argument");
-    for(; e; e = e->cdr) {
-        last = e->car;
+    for(; e; e = e->cdr) {        
         /* TODO: Maybe the `write()` function should rather
         serialize the object to a string. Then we can use the `bif_display()`
         to display the data. If we implement `serialize()` as a BIF, then
         we can implement `write` as
         `(define (write x) (display (serialize x)))`*/
-        write(stdout, last);
+        write(stdout, car(e));
         fputc('\n', stdout);
     }
-    return rc_retain(last);
+    return NULL;
 }
 
 static Expr *bif_display(Env *env, Expr *e) {
-    const char *txt = "";
     /* TODO: Maybe instead of hardcoding stdout here we
     can store the destination where to write to in CDATA.
     On the other hand, maybe the user (of the API) can just
     replace the `display` function with one that suits his needs.
     */
     for(; e; e = e->cdr) {
-        txt = get_text(e->car);
-        fputs(txt, stdout);
-        fputc(e->cdr ? ' ' : '\n', stdout);
+        fputs(get_text(car(e)), stdout);
+        fputc(cdr(e) ? ' ' : '\n', stdout);
     }
-    return value(txt);
+    return NULL;
 }
 
 /* `(apply + '(3 4 5))` or `(apply + (list 1 2))` */
 static Expr *bif_apply(Env *env, Expr *e) {
-    Expr *fun, *args, *res;
-    if(length(e) != 2 || !is_list(e->cdr->car))
+    if(length(e) != 2 || !is_list(cadr(e)))
         return error("'apply' expects a function and a list of arguments");
-    fun = e->car;
-    args = e->cdr->car;
-    res = apply(env, fun, args);
-    return res;
+    return apply(env, car(e), cadr(e));
 }
 
 static Expr *bif_cons(Env *env, Expr *e) {
     if(length(e) != 2)
         return error("'cons' expects 2 arguments");
-    return cons(rc_retain(e->car), rc_retain(e->cdr->car));
+    return cons(rc_retain(car(e)), rc_retain(cadr(e)));
 }
 
 static Expr *bif_car(Env *env, Expr *e) {
-    if(!e || !is_cons(e->car))
-        return error("'car' expects a list");
-    return e->car->car ? rc_retain(e->car->car) : NULL;
+    if(!is_cons(car(e)))
+        return error("'car' expects a cons");
+    return rc_retain(caar(e));
 }
 
 static Expr *bif_cdr(Env *env, Expr *e) {
-    if(!e || !is_cons(e->car))
-        return error("'cdr' expects a list");
-    return e->car->cdr ? rc_retain(e->car->cdr) : NULL;
+    if(!is_cons(car(e)))
+        return error("'cdr' expects a cons");
+    return rc_retain(cdar(e));
 }
 
 static Expr *bif_list(Env *env, Expr *e) {
-    return e ? rc_retain(e) : NULL;
+    return rc_retain(e);
 }
 
 // predicates
@@ -986,9 +979,9 @@ TYPE_FUNCTION(bif_is_symbol, "symbol?", boolean(is_symbol(e->car)))
 TYPE_FUNCTION(bif_is_pair, "pair?", boolean(is_cons(e->car)))
 TYPE_FUNCTION(bif_is_procedure, "procedure?", boolean(is_procedure(e->car)))
 TYPE_FUNCTION(bif_is_cdata, "cdata?", boolean(is_cdata(e->car)))
+TYPE_FUNCTION(bif_is_value, "value?", boolean(is_value(e->car)))
 TYPE_FUNCTION(bif_is_number, "number?", boolean(is_number(e->car)))
 TYPE_FUNCTION(bif_is_boolean, "boolean?", boolean(is_boolean(e->car)))
-TYPE_FUNCTION(bif_is_zero, "zero?", boolean(atof(get_text(e->car)) == 0.0))
 TYPE_FUNCTION(bif_not, "not", boolean(!is_true(e->car)))
 
 static Expr *bif_equal(Env *env, Expr *e) {
@@ -1043,15 +1036,15 @@ static Expr *bif_mod(Env *env, Expr *e) {
 static Expr *cname(Env *env, Expr *e) {                     \
     if(length(e) < 2)                                       \
         return error("'" name "' expects two arguments");   \
-    double a = atof(get_text(e->car));                      \
-    double b = atof(get_text(e->cdr->car));                 \
-    return boolean(a operator b);                           \
+    const char *a = get_text(e->car);                       \
+    const char *b = get_text(e->cdr->car);                  \
+    return boolean(operator);                               \
 }
-COMPARE_FUNCTION(bif_number_eq, "=", ==)
-COMPARE_FUNCTION(bif_gt, ">", >)
-COMPARE_FUNCTION(bif_ge, ">=", >=)
-COMPARE_FUNCTION(bif_lt, "<", <)
-COMPARE_FUNCTION(bif_le, "<=", <=)
+COMPARE_FUNCTION(bif_number_eq, "=", atof(a) == atof(b))
+COMPARE_FUNCTION(bif_gt, ">", atof(a) > atof(b))
+COMPARE_FUNCTION(bif_ge, ">=", atof(a) >= atof(b))
+COMPARE_FUNCTION(bif_lt, "<", atof(a) < atof(b))
+COMPARE_FUNCTION(bif_le, "<=", atof(a) <= atof(b))
 
 static Expr *bif_map(Env *env, Expr *e) {
     if(length(e) < 2 || !is_procedure(e->car) || !is_list(e->cdr->car))
@@ -1099,6 +1092,30 @@ static Expr *bif_append(Env *env, Expr *e) {
     return result;
 }
 
+static Expr *bif_string_length(Env *env, Expr *e) {
+    return nvalue(strlen(get_text(car(e))));
+}
+
+static Expr *bif_string_append(Env *env, Expr *e) {
+    size_t n = 0, m;
+    char *buf = NULL;
+    for(; e; e = cdr(e)) {
+        const char *s = get_text(car(e));
+        m = strlen(s);
+        buf = realloc(buf, n + m + 1);
+        strncpy(buf + n, s, m);
+        n += m;
+    }
+    if(!buf) return value("");
+    assert(strlen(buf) == n);
+    buf[n] = '\0';
+    e = value(buf);
+    free(buf);
+    return e;
+}
+COMPARE_FUNCTION(bif_string_eq, "string=?", !strcmp(a, b))
+COMPARE_FUNCTION(bif_string_lt, "string<?", strcmp(a, b) < 0)
+
 #define TEXT_LIB(g,t) do {Expr *x=eval_str(g,t);assert(!is_error(x));rc_release(x);} while(0)
 
 Env *global_env() {
@@ -1110,6 +1127,10 @@ Env *global_env() {
     env_put(global, "cons", cfun(bif_cons));
     env_put(global, "car", cfun(bif_car));
     env_put(global, "cdr", cfun(bif_cdr));
+    TEXT_LIB(global,"(define (caar x) (car (car x)))");
+    TEXT_LIB(global,"(define (cadr x) (car (cdr x)))");
+    TEXT_LIB(global,"(define (cdar x) (cdr (car x)))");
+    TEXT_LIB(global,"(define (cddr x) (cdr (cdr x)))");
     env_put(global, "list", cfun(bif_list));
     env_put(global, "list?", cfun(bif_is_list));
     env_put(global, "length", cfun(bif_length));
@@ -1118,11 +1139,13 @@ Env *global_env() {
     env_put(global, "pair?", cfun(bif_is_pair));
     env_put(global, "procedure?", cfun(bif_is_procedure));
     env_put(global, "cdata?", cfun(bif_is_cdata));
+    env_put(global, "value?", cfun(bif_is_value));
+    TEXT_LIB(global,"(define (string? x) (and (value? x) (not (number? x))))");
     env_put(global, "number?", cfun(bif_is_number));
     env_put(global, "boolean?", cfun(bif_is_boolean));
     env_put(global, "equal?", cfun(bif_equal));
     env_put(global, "eq?", cfun(bif_eq));
-    env_put(global, "zero?", cfun(bif_is_zero));
+    TEXT_LIB(global,"(define (zero? x) (and (number? x) (= 0 x)))");
     env_put(global, "not", cfun(bif_not));
     env_put(global, "+", cfun(bif_add));
     env_put(global, "-", cfun(bif_sub));
@@ -1143,6 +1166,15 @@ Env *global_env() {
     TEXT_LIB(global,"(define (reverse l) (fold cons '() l))");
     TEXT_LIB(global,"(define (range a b) (if (= a b) (list b) (cons a (range (+ a 1) b))))");
     TEXT_LIB(global,"(define (nth n L) (if (or (null? L) (< n 0)) '() (if (= n 1) (car L) (nth (- n 1) (cdr L)))))");
+    
+    env_put(global, "string-length?", cfun(bif_string_length));
+    env_put(global, "string-append", cfun(bif_string_append));
+    TEXT_LIB(global,"(define (non-empty-string? x) (not (= 0 (string-length? x))))");
+    env_put(global, "string=?", cfun(bif_string_eq));
+    env_put(global, "string<?", cfun(bif_string_lt));
+    TEXT_LIB(global,"(define (string<=? a b) (or (string<? a b) (string=? a b)))");
+    TEXT_LIB(global,"(define (string>? a b) (not (string<=? a b)))");
+    TEXT_LIB(global,"(define (string>=? a b) (not (string<? a b)))");
 
     env_put(global, "pi", nvalue(M_PI));
 

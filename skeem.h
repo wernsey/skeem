@@ -114,6 +114,8 @@ int is_true(Expr *e);
 
 int is_procedure(Expr *e);
 
+int is_value(Expr *e);
+
 int is_number(Expr *e);
 
 int is_error(Expr *e);
@@ -125,6 +127,11 @@ int is_list(Expr *e);
 Expr *car(Expr *e);
 
 Expr *cdr(Expr *e);
+
+#define caar(e) car(car(e))
+#define cadr(e) car(cdr(e))
+#define cdar(e) cdr(car(e))
+#define cddr(e) cdr(cdr(e))
 
 int length(Expr *e);
 

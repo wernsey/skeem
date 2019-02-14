@@ -24,10 +24,22 @@ An interpreter for a small subset of [Scheme][].
 * Special forms:
   * `let*` - see [here](http://www.cs.utexas.edu/ftp/garbage/cs345/schintro-v13/schintro_59.html)
   * `cond` special form
+* String functions. I've been looking at [Racket's](https://docs.racket-lang.org/reference/strings.html), 
+  but I'm not going to do mutable strings:
+  * [x] `(string-length str)` from which `(non-empty-string? x)` can be implemented
+  * [ ] `(substring str start [end=(string-length str)])`
+  * [x] `(string-append str...)`
+  * [x] `(string=? str1 str2...)` and `(string<? str1 str2)` - _all the other comparisons can be made from =? and <?_
+  * [ ] `(string-upcase str)`
+  * [ ] `(string-downcase str)`
+  * [ ] `(string-replace str from to [all=#t])`
+  * [ ] `(string-split str [sep=' ' trim?=#t repeat?=#f])`
+  * [ ] `(string-trim str)`
+  * [ ] `(string-contains? s what)`, `(string-prefix? s what)` and `(string-suffix? s what)`
 
 #### Bugs
 
-* This input broke the interpreter: `(nth 3 (range 10 20))^Z`
+* This input broke the REPL interpreter: `(nth 3 (range 10 20))^Z`
 
 ## References
 
@@ -120,12 +132,6 @@ I'm leaning towards using the reference counter for garbage collection:
 * My RC also has some non-reentrant features for debugging memory leaks, but the problems with sharing objects between interpreter environments
 
 It seems the biggest drawback of using RC is that you can't have closures: The lambda has to keep a reference to the environment in which it was created, which in turn eventually has a reference to the global environment. So if you store a lambda with a closure in a global variable you'll have a circular reference, and therefore a leak.
-
-_A possible way around this is to release the `Env` of the closure's parent pointer and set it to null after the lambda was called, so that the `Env` does not have reference to the global environment; So when you look up a variable, you have two separate paths: the path through the chain of environments, and the closure environment. Investigate further._
-
-One problem with RC is that if you want to do something like
-`env_put(env, "foo", atom("bar"))` in the C API you have to be careful with how
-the environment takes ownership of the `atom()` pointer.
 
 ### Hash tables
 
