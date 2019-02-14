@@ -20,13 +20,13 @@ elements from [part 2][lispy2]. The reference counter was inspired by
 ## References
 
 - Peter Norvig's [lispy][] interpreter and [part2][lispy2]
-  - [Chapter 22](https://github.com/norvig/paip-lisp/blob/master/docs/chapter22.md) of 
-    Peter Norvig's book [Paradigms of Artificial Intelligence Programming][paip] (PAIP) 
+  - [Chapter 22](https://github.com/norvig/paip-lisp/blob/master/docs/chapter22.md) of
+    Peter Norvig's book [Paradigms of Artificial Intelligence Programming][paip] (PAIP)
     also talks about Scheme extensively
 - <http://www.r6rs.org/>
-- I've used the [The Racket Reference](https://docs.racket-lang.org/reference/index.html) for guidance on 
+- I've used the [The Racket Reference](https://docs.racket-lang.org/reference/index.html) for guidance on
   how some functions should be implemented
-- Likewise for the [Towards a Standard Library](https://en.wikibooks.org/wiki/Write_Yourself_a_Scheme_in_48_Hours/Towards_a_Standard_Library) 
+- Likewise for the [Towards a Standard Library](https://en.wikibooks.org/wiki/Write_Yourself_a_Scheme_in_48_Hours/Towards_a_Standard_Library)
   of the **Write Yourself a Scheme in 48 Hours** wikibook.
 - Wikipedia entry for [cons](https://en.wikipedia.org/wiki/Cons)
 - [The Scheme Programming Language](https://www.scheme.com/tspl4/)
@@ -69,23 +69,34 @@ Articles/links that might come in useful in the future
 
 ### TODOs
 
-* Escape sequences in string literals!
+* [x] Escape sequences in string literals!
+* [ ] The way `VALUE`s are written in `sk_write()` should take escape characters into account.
 * Special forms:
-  * `let*` - see [here](http://www.cs.utexas.edu/ftp/garbage/cs345/schintro-v13/schintro_59.html)
-  * `cond` special form
-* String functions. I've been looking at [Racket's](https://docs.racket-lang.org/reference/strings.html), 
+  * [ ] `let*` - see [here](http://www.cs.utexas.edu/ftp/garbage/cs345/schintro-v13/schintro_59.html)
+  * [ ] `cond` special form
+* String functions. I've been looking at [Racket's](https://docs.racket-lang.org/reference/strings.html),
   but I'm not going to do mutable strings:
   * [x] `(string-length str)` from which `(non-empty-string? x)` can be implemented
-  * [ ] `(substring str start [end=(string-length str)])`
+  * [x] `(substring str start [end=(string-length str)])`
   * [x] `(string-append str...)`
   * [x] `(string=? str1 str2...)` and `(string<? str1 str2)` - _all the other comparisons can be made from =? and <?_
-  * [ ] `(string-upcase str)`
-  * [ ] `(string-downcase str)`
+  * [x] `(string-upcase str)`
+  * [x] `(string-downcase str)`
   * [ ] `(string-replace str from to [all=#t])`
-  * [ ] `(string-split str [sep=' ' trim?=#t repeat?=#f])`
-  * [ ] `(string-trim str)`
+    * You need the `filter` in this line `(define x (filter (lambda (s) (> (string-length? s) 0)) (string-split (readfile 'test2.txt) "\r\n")))`
+      because the
+  * [x] `(string-split str [sep=' '])`
+  * [x] `(string-trim str)`
   * [ ] `(string-contains? s what)`, `(string-prefix? s what)` and `(string-suffix? s what)`
-* Math functions: `sin`, `cos`, `tan`, `atan`, etc
+    * [ ] Actually, I only need a `(string-find haystack needle)` function in C that returns the index of the needle in the
+       haystack, and then these other functions can be defined in terms of that.
+* [x] Math functions: `sin`, `cos`, `tan`, `atan`, etc
+* [x] If you look at `bif_string_append()` (and `bif_string_split()` and elsewhere) there is clearly a need for an
+  API function `sk_value_o(buf)` that takes ownership of the parameter `buf` passed to it.
+  It would work like `sk_value(buf)`, but replaces the `strdup()` with a normal assignment.
+  This would allow you to remove the `free()` from `bif_string_append()`.
+* [ ] The hash-tables in the environments need a variable capacity. The global environment needs a bit more
+  slots than the current 32, while 32 slots seems like overkil for a typical lambda.
 
 ### Bugs
 
@@ -97,21 +108,21 @@ All values are stored as strings internally. This negatively affects numeric per
 be converted to a double (through `atof()`) if it is used as a number, and then converted back into a string
 (through `snprintf()`) when it is stored.
 
-A solution would be a `NUMBER` type `SkObj` with a `double` value, but the `sk_get_text()` function will 
+A solution would be a `NUMBER` type `SkObj` with a `double` value, but the `sk_get_text()` function will
 need some buffer to which to print the text value to.
-Having `sk_get_text()` change its parameter directly is out of the question because it violates the 
+Having `sk_get_text()` change its parameter directly is out of the question because it violates the
 immutability of the `SkObj` objects.
 
-My `sk_check_numeric()` function originally looked like the below, but the newer versions just checks for something 
+My `sk_check_numeric()` function originally looked like the below, but the newer versions just checks for something
 that starts with an optional '+' or '-' and a digit:
 
 ```
 int sk_check_numeric(const char *c) {
-	int ds = 0, de = 0;
-	if(strchr("+-", *c))
-		c++;
-	if(!*c) return 0;
-	while(isdigit(*c) || (*c == '.' && !ds++) || ((*c == 'e' || *c == 'E') && !de++)) {
+    int ds = 0, de = 0;
+    if(strchr("+-", *c))
+        c++;
+    if(!*c) return 0;
+    while(isdigit(*c) || (*c == '.' && !ds++) || ((*c == 'e' || *c == 'E') && !de++)) {
         if(*c == 'e' || *c == 'E') {
             c++;
             if(*c == '-' || *c == '+')
@@ -119,13 +130,13 @@ int sk_check_numeric(const char *c) {
         } else
             c++;
     }
-	return !*c;
+    return !*c;
 }
 ```
 
 ### Garbage collection
 
-Skeem uses a reference counter (RC) for memory management. 
+Skeem uses a reference counter (RC) for memory management.
 A mark-and-sweep (MS) garbage collector was considered, but RC was ultimately chosen for a couple of reasons:
 
 * RC has less overhead and simpler to implement.
@@ -136,11 +147,11 @@ A mark-and-sweep (MS) garbage collector was considered, but RC was ultimately ch
 * It is difficult to estimate the paramters of MS, like how frequently it should be run, for various workloads.
 
 The biggest drawback of RC is that the interpreter can't have closures. Closures require lambdas to have a
-references to the environments in which they were created, which will ultimately, probably, have a reference to the 
+references to the environments in which they were created, which will ultimately, probably, have a reference to the
 lamba itself, leading to circular references which the RC can't deal with, and therefore memory leaks.
 
 ### Hash tables
 
 Skeem uses the DJB hash, which is [a bit controversial](http://dmytry.blogspot.com/2009/11/horrible-hashes.html).
-It uses [the XOR variant](http://www.cse.yorku.ca/~oz/hash.html), but was chosen for its simplicity. 
+It uses [the XOR variant](http://www.cse.yorku.ca/~oz/hash.html), but was chosen for its simplicity.
 [This StackOverflow answer](https://stackoverflow.com/a/13809282/115589) explains the constants in DJB.

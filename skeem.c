@@ -50,13 +50,13 @@ static void env_dtor(SkEnv *env) {
         while(env->table[i]) {
             hash_element* v = env->table[i];
             env->table[i] = v->next;
-            if(v->ex) rc_release(v->ex);
+            rc_release(v->ex);
             free(v->name);
             free(v);
         }
         env->table[i] = NULL;
     }
-    if(env->parent) rc_release(env->parent);
+    rc_release(env->parent);
 }
 
 SkEnv *sk_env_create(SkEnv *parent) {
@@ -125,11 +125,8 @@ static void SkExpr_dtor(SkObj *e) {
         case ERROR:
         case SYMBOL:
         case VALUE: free(e->value); break;
-        case CONS:
-            if(e->car) rc_release(e->car);
-            if(e->cdr) rc_release(e->cdr);
-            break;
-        case LAMBDA: if(e->args) rc_release(e->args); rc_release(e->body); break;
+        case CONS: rc_release(e->car); rc_release(e->cdr); break;
+        case LAMBDA: rc_release(e->args); rc_release(e->body); break;
         case CDATA: if(e->cdtor) e->cdtor(e->cdata); break;
         default: break;
     }
@@ -166,6 +163,20 @@ SkObj *sk_value_(const char *val, const char *file, int line) {
     rc_set_dtor(e, (ref_dtor)SkExpr_dtor);
     e->type = VALUE;
     e->value = strdup(val);
+    return e;
+}
+
+#ifdef NDEBUG
+SkObj *sk_value_o(char *val) {
+    SkObj *e = rc_alloc(sizeof *e);
+#else
+SkObj *sk_value_o_(char *val, const char *file, int line) {
+    SkObj *e = rc_alloc_(sizeof *e, file, line);
+#endif
+    MEMCHECK(e);
+    rc_set_dtor(e, (ref_dtor)SkExpr_dtor);
+    e->type = VALUE;
+    e->value = val;
     return e;
 }
 
@@ -378,9 +389,9 @@ int sk_check_numeric(const char *c) {
 
 const char *sk_get_text(SkObj *e) {
     if(!e) return "";
-    if(e->type == TRUE) 
+    if(e->type == TRUE)
         return "true";
-    else if(e->type == FALSE) 
+    else if(e->type == FALSE)
         return "false";
     return (e->type == VALUE || e->type == SYMBOL || e->type == ERROR) ? e->value : "";
 }
@@ -469,7 +480,8 @@ restart:
         *rem =  ++in;
         return tok[0];
     } else if (*in == '\"') {
-        while(*++in != '\"') {
+        ++in;
+        while(*in != '\"') {
             if(!*in) {
                 snprintf(tok, n, "unterminated string constant");
                 return SCAN_ERROR;
@@ -477,8 +489,28 @@ restart:
                 snprintf(tok, n, "token too long");
                 return SCAN_ERROR;
             }
-            /* TODO: Escape sequences... */
-            tok[i++] = *in;
+            if(*in == '\\') {
+                ++in;
+                if(isdigit(*in)) {
+                    int v = *in - '0';
+                    while(isdigit(*++in)) {
+                        v = v * 10 + (*in - '0');
+                    }
+                    tok[i++] = v & 0x7F;
+                } else {
+                    switch(*in) {
+                        case '\0': snprintf(tok, n, "unterminated string constant"); return SCAN_ERROR;
+                        case 'n' : tok[i++] = '\n'; break;
+                        case 'r' : tok[i++] = '\r'; break;
+                        case 't' : tok[i++] = '\t'; break;
+                        case 'b' : tok[i++] = '\b'; break;
+                        case 'a' : tok[i++] = '\a'; break;
+                        default : tok[i++] = *in; break;
+                    }
+                    in++;
+                }
+            } else
+                tok[i++] = *(in++);
         }
         tok[i] = '\0';
         *rem = ++in;
@@ -547,16 +579,16 @@ static SkObj *parse0(Parser *p) {
 
         while(!accept(p, term)) {
             if(accept(p, SCAN_ERROR)) {
-                if(list) rc_release(list);
+                rc_release(list);
                 return sk_error(p->tok);
             } else if(accept(p, SCAN_END)) {
-                if(list) rc_release(list);
+                rc_release(list);
                 return sk_errorf("expected '%c'", term);
             }
 
             SkObj *e = parse0(p);
             if(sk_is_error(e)) {
-                if(list) rc_release(list);
+                rc_release(list);
                 return e;
             }
 
@@ -594,7 +626,7 @@ SkObj *parse_stmts(const char *text) {
         if(accept(&p, SCAN_END)) break;
         SkObj * e = parse0(&p);
         if(sk_is_error(e)) {
-            if(root) rc_release(root);
+            rc_release(root);
             return e;
         }
         list_append1(&root, e, &last);
@@ -630,7 +662,7 @@ static SkObj *bind_args(SkEnv *env, SkObj *e) {
     for(; e; e = e->cdr) {
         SkObj *arg = sk_eval(env, e->car);
         if(sk_is_error(arg)) {
-            if(args) rc_release(args);
+            rc_release(args);
             return arg;
         }
         list_append1(&args, arg, &last);
@@ -745,7 +777,7 @@ SkObj *sk_eval(SkEnv *env, SkObj *e) {
 
                 SkEnv *o = new_env;
                 new_env = sk_env_create(env);
-                if(o) rc_release(o);
+                rc_release(o);
 
                 for(; a; a = a->cdr) {
                     if(!sk_is_list(a->car) || sk_length(a->car) != 2
@@ -762,7 +794,7 @@ SkObj *sk_eval(SkEnv *env, SkObj *e) {
                     sk_env_put(new_env, name, v);
                 }
                 for(; b && b->cdr; b = b->cdr) {
-                    if(result) rc_release(result);
+                    rc_release(result);
                     result = sk_eval(new_env, b->car);
                     if(sk_is_error(result))
                         goto end_let;
@@ -806,7 +838,7 @@ end_let:
                 else
                     e = e->cdr->cdr;
 
-                if(cond) rc_release(cond);
+                rc_release(cond);
                 e = e->car;
                 continue; /* TCO */
 
@@ -819,7 +851,7 @@ end_let:
                         goto end;
                     } else if(!sk_is_true(a))
                         ans = 0;
-                    if(a) rc_release(a);
+                    rc_release(a);
                 }
                 result = sk_boolean(ans);
             } else if(!strcmp(what, "or")) {
@@ -831,7 +863,7 @@ end_let:
                         goto end;
                     } else if(sk_is_true(a))
                         ans = 1;
-                    if(a) rc_release(a);
+                    rc_release(a);
                 }
                 result = sk_boolean(ans);
             } else if(!strcmp(what, "quote")) {
@@ -841,7 +873,7 @@ end_let:
                     result = e->cdr->car ? rc_retain(e->cdr->car) : NULL;
             } else if(!strcmp(what, "begin")) {
                 for(e = e->cdr; e && e->cdr; e = e->cdr) {
-                    if(result) rc_release(result);
+                    rc_release(result);
                     result = sk_eval(env, e->car);
                     if(sk_is_error(result)) goto end;
                 }
@@ -851,7 +883,7 @@ end_let:
                 }
             } else {
                 /* Function call */
-                if(args) rc_release(args);
+                rc_release(args);
                 args = bind_args(env, e);
                 assert(args);
                 if(sk_is_error(args)) {
@@ -868,10 +900,8 @@ end_let:
                     assert(sk_is_list(f->args));
 
                     SkEnv *o = new_env;
-
                     new_env = sk_env_create(env);
-
-                    if(o) rc_release(o);
+                    rc_release(o);
 
                     SkObj *p = f->args;
                     for(; a && p; a = a->cdr, p = p->cdr)
@@ -897,8 +927,8 @@ end_let:
     } /* for(;;) */
 end:
 
-    if(args) rc_release(args);
-    if(new_env) rc_release(new_env);
+    rc_release(args);
+    rc_release(new_env);
 
     return result;
 }
@@ -911,6 +941,53 @@ SkObj *sk_eval_str(SkEnv *global, const char *text) {
     rc_release(program);
     return result;
 }
+
+#if 0
+/* TODO: use this instead of the external ref counter */
+typedef struct refobj {
+    unsigned int refcnt;
+    ref_dtor dtor;
+} RefObj;
+
+void *rc_alloc(size_t size) {
+    void *data;
+    RefObj *r = malloc((sizeof *r) + size);
+    data = (char*)r + sizeof *r;
+    r->refcnt = 1;
+    r->dtor = NULL;
+    return data;
+}
+
+void *rc_retain(void *p) {
+    RefObj *r;
+    if(!p)
+        return NULL;
+    r = (RefObj *)((char *)p - sizeof *r);
+    r->refcnt++;
+    return p;
+}
+
+void rc_release(void *p) {
+    RefObj *r;
+    if(!p)
+        return;
+    r = (RefObj *)((char *)p - sizeof *r);
+    if(--r->refcnt == 0) {
+        if(r->dtor != NULL)
+            r->dtor(p);
+        free(r);
+    }
+}
+
+typedef void (*ref_dtor)(void *);
+
+void rc_set_dtor(void *p, ref_dtor dtor) {
+    RefObj *r;
+    if(!p) return;
+    r = (RefObj *)((char *)p - sizeof *r);
+    r->dtor = dtor;
+}
+#endif
 
 static SkObj *bif_write(SkEnv *env, SkObj *e) {
     if(!e) return sk_error("'write' expects an argument");
@@ -1054,7 +1131,7 @@ static SkObj *bif_map(SkEnv *env, SkObj *e) {
         SkObj *res = sk_apply(env, f, a);
         rc_release(a);
         if(sk_is_error(res)) {
-            if(result) rc_release(result);
+            rc_release(result);
             return res;
         }
         list_append1(&result, res, &last);
@@ -1071,7 +1148,7 @@ static SkObj *bif_filter(SkEnv *env, SkObj *e) {
         SkObj *res = sk_apply(env, f, a);
         rc_release(a);
         if(sk_is_error(res)) {
-            if(result) rc_release(result);
+            rc_release(result);
             return res;
         } else if(sk_is_true(res))
             list_append1(&result, rc_retain(e->car), &last);
@@ -1086,8 +1163,11 @@ static SkObj *bif_append(SkEnv *env, SkObj *e) {
     SkObj *x, *result = NULL, *last = NULL;
     for(x = e->car; x; x = x->cdr)
         list_append1(&result, rc_retain(x->car), &last);
+
+    // This neccessary? Can't we just say last->cdr = retain(e->cdr->car)?
     for(x = e->cdr->car; x; x = x->cdr)
         list_append1(&result, rc_retain(x->car), &last);
+
     return result;
 }
 
@@ -1102,18 +1182,138 @@ static SkObj *bif_string_append(SkEnv *env, SkObj *e) {
         const char *s = sk_get_text(sk_car(e));
         m = strlen(s);
         buf = realloc(buf, n + m + 1);
+        MEMCHECK(buf);
         strncpy(buf + n, s, m);
         n += m;
     }
     if(!buf) return sk_value("");
     assert(strlen(buf) == n);
     buf[n] = '\0';
-    e = sk_value(buf);
-    free(buf);
+    e = sk_value_o(buf);
     return e;
 }
+
+static SkObj *bif_string_split(SkEnv *env, SkObj *e) {
+    const char *str = sk_get_text(sk_car(e)), *sep = sk_get_text(sk_cadr(e));
+    SkObj *result = NULL, *last = NULL;
+
+    if(!sep[0])
+        sep = " \t\r\n";
+
+    char *find = strpbrk(str, sep);
+    while(find) {
+        size_t len = find - str;
+        char *buf = malloc(len + 1);
+        MEMCHECK(buf);
+        strncpy(buf, str, len);
+        buf[len] = '\0';
+        list_append1(&result, sk_value_o(buf), &last);
+
+        str = find + 1;
+        find = strpbrk(str, sep);
+    }
+    list_append1(&result, sk_value(str), &last);
+
+    return result;
+}
+
+static SkObj *bif_substring(SkEnv *env, SkObj *e) {
+    const char *str = sk_get_text(sk_car(e));
+    SkObj *eo = sk_car(sk_cddr(e));
+    int start = atoi(sk_get_text(sk_cadr(e))), end;
+
+    size_t len = strlen(str);
+
+    if(!sk_is_null(eo)) {
+        end = atoi(sk_get_text(eo));
+        if(end > len)
+            end = len;
+    } else
+        end = len;
+
+    if(start < 0 || end <= start || start >= len)
+        return sk_value("");
+
+    len = end - start;
+
+    char *buf = malloc(len+1);
+    MEMCHECK(buf);
+
+    strncpy(buf, str + start, len);
+    buf[len] = '\0';
+
+    return sk_value_o(buf);
+}
+
+static SkObj *bif_string_upcase(SkEnv *env, SkObj *e) {
+    char *s = strdup(sk_get_text(sk_car(e))), *c;
+    for(c = s; c[0]; c++) *c = toupper(*c);
+    return sk_value_o(s);
+}
+
+static SkObj *bif_string_downcase(SkEnv *env, SkObj *e) {
+    char *s = strdup(sk_get_text(sk_car(e))), *c;
+    MEMCHECK(s);
+    for(c = s; c[0]; c++) *c = tolower(*c);
+    return sk_value_o(s);
+}
+
+static SkObj *bif_string_ascii(SkEnv *env, SkObj *e) {
+    const char *s = sk_get_text(sk_car(e));
+    return sk_number(s[0]);
+}
+
+static SkObj *bif_string_char(SkEnv *env, SkObj *e) {
+    int s = atoi(sk_get_text(sk_car(e))) & 0x7F;
+    char *buf = malloc(2);
+    MEMCHECK(buf);
+    buf[0] = s; buf[1] = '\0';
+    return sk_value_o(buf);
+}
+
+static SkObj *bif_string_trim(SkEnv *env, SkObj *e) {
+    char *s = strdup(sk_get_text(sk_car(e))), *b;
+    int i;
+    MEMCHECK(s);
+    for(b = s; *b && isspace(b[0]); b++);
+    for(i = strlen(b); i > 0 && isspace(b[i-1]); i--) b[i-1] = '\0';
+    SkObj *r = sk_value(b);
+    free(s);
+    return r;
+}
+
 COMPARE_FUNCTION(bif_string_eq, "string=?", !strcmp(a, b))
 COMPARE_FUNCTION(bif_string_lt, "string<?", strcmp(a, b) < 0)
+
+#define MATH_FUN(f) static SkObj *bif_ ## f(SkEnv *env, SkObj *e) { return sk_number(f(atof(sk_get_text(sk_car(e))))); }
+
+MATH_FUN(sin)
+MATH_FUN(cos)
+MATH_FUN(tan)
+MATH_FUN(asin)
+MATH_FUN(acos)
+MATH_FUN(log)
+MATH_FUN(exp)
+MATH_FUN(sqrt)
+MATH_FUN(ceil)
+MATH_FUN(floor)
+MATH_FUN(fabs)
+
+static SkObj *bif_atan(SkEnv *env, SkObj *e) {
+    double p, q;
+    p = atof(sk_get_text(sk_car(e)));
+    if(sk_is_null(sk_cadr(e)))
+        return sk_number(atan(p));
+    q = atof(sk_get_text(sk_cadr(e)));
+    return sk_number(atan2(p, q));
+}
+
+static SkObj *bif_pow(SkEnv *env, SkObj *e) {
+    double x, y;
+    x = atof(sk_get_text(sk_car(e)));
+    y = atof(sk_get_text(sk_cadr(e)));
+    return sk_number(pow(x, y));
+}
 
 #define TEXT_LIB(g,t) do {SkObj *x=sk_eval_str(g,t);assert(!sk_is_error(x));rc_release(x);} while(0)
 
@@ -1140,7 +1340,7 @@ SkEnv *sk_global_env() {
     sk_env_put(global, "list", sk_cfun(bif_list));
     /** `(length L)` - finds the length of the list `L` */
     sk_env_put(global, "length", sk_cfun(bif_length));
-    
+
     sk_env_put(global, "list?", sk_cfun(bif_is_list));
     sk_env_put(global, "null?", sk_cfun(bif_is_null));
     sk_env_put(global, "symbol?", sk_cfun(bif_is_symbol));
@@ -1152,11 +1352,11 @@ SkEnv *sk_global_env() {
     sk_env_put(global, "number?", sk_cfun(bif_is_number));
     TEXT_LIB(global,"(define (zero? x) (and (number? x) (= 0 x)))");
     sk_env_put(global, "boolean?", sk_cfun(bif_is_boolean));
-    
+
     /** `(equal? x y)` - Compares `x` and `y` for equality */
     sk_env_put(global, "equal?", sk_cfun(bif_equal));
     /** `(eq? x y)` - returns true if and only if `x` and `y` are the same object */
-    sk_env_put(global, "eq?", sk_cfun(bif_eq));    
+    sk_env_put(global, "eq?", sk_cfun(bif_eq));
     /** `(not x)` - logical not. Returns `#f` if and only if `x` evaluates to `#t` */
     sk_env_put(global, "not", sk_cfun(bif_not));
     /** `(apply f '(arg1 arg2))` - Applies a function to the given arguments */
@@ -1195,67 +1395,55 @@ SkEnv *sk_global_env() {
     sk_env_put(global, "string-length?", sk_cfun(bif_string_length));
     /** `(string-append s1 s2...)` - Appends all parameters into a new string. */
     sk_env_put(global, "string-append", sk_cfun(bif_string_append));
+    /** `(string-split str sep)` - Splits a string `str` into a list of substrings */
+    sk_env_put(global, "string-split", sk_cfun(bif_string_split));
+    /** `(substring str start [end])` - Retrieves the substring of `str` between `start` and `end`. */
+    sk_env_put(global, "substring", sk_cfun(bif_substring));
+    /** `(string-upcase str)` - Converts a string `str` to uppercase */
+    sk_env_put(global, "string-upcase", sk_cfun(bif_string_upcase));
+    /** `(string-downcase str)` - Converts a string `str` to lowercase */
+    sk_env_put(global, "string-downcase", sk_cfun(bif_string_downcase));
+    /** `(string-ascii c)` - Returns the ASCII value of the first character in the string `c` */
+    sk_env_put(global, "string-ascii", sk_cfun(bif_string_ascii));
+    /** `(string-char a)` - Converts the ASCII value `a` to a string */
+    sk_env_put(global, "string-char", sk_cfun(bif_string_char));
+    /** `(string-trim s)` - Trims whitespace from the start and end of a string `s` */
+    sk_env_put(global, "string-trim", sk_cfun(bif_string_trim));
     TEXT_LIB(global,"(define (non-empty-string? x) (not (= 0 (string-length? x))))");
-    /** `(string=? s1 s2)`, `(string<? s1 s2)`, `(string<=? s1 s2)`, `(string>? s1 s2)` and `(string>=? s1 s2)` - strings comparisons between `s1` and `s2` */
+    /** `(string=? s1 s2)`, `(string<? s1 s2)`, `(string<=? s1 s2)`, `(string>? s1 s2)` and `(string>=? s1 s2)` - string comparisons between `s1` and `s2` */
     sk_env_put(global, "string=?", sk_cfun(bif_string_eq));
     sk_env_put(global, "string<?", sk_cfun(bif_string_lt));
     TEXT_LIB(global,"(define (string<=? a b) (or (string<? a b) (string=? a b)))");
     TEXT_LIB(global,"(define (string>? a b) (not (string<=? a b)))");
     TEXT_LIB(global,"(define (string>=? a b) (not (string<? a b)))");
+    /** `(sin x)` - sine of `x` */
+    sk_env_put(global, "sin", sk_cfun(bif_sin));
+    /** `(cos x)` - cosine of `x` */
+    sk_env_put(global, "cos", sk_cfun(bif_cos));
+    /** `(tan x)` - tangent of `x` */
+    sk_env_put(global, "tan", sk_cfun(bif_tan));
+    /** `(asin x)` - arc-sine of `x` */
+    sk_env_put(global, "asin", sk_cfun(bif_asin));
+    /** `(acos x)` - arc-cosine of `x` */
+    sk_env_put(global, "acos", sk_cfun(bif_acos));
+    /** `(atan p)` or `(atan y x)` - arc-tangent of `p` or `y/x` */
+    sk_env_put(global, "atan", sk_cfun(bif_atan));
+    /** `(log x)` - natural logartihm of `x` */
+    sk_env_put(global, "log", sk_cfun(bif_log));
+    /** `(exp x)` - exponential of `x` */
+    sk_env_put(global, "exp", sk_cfun(bif_exp));
+    /** `(sqrt x)` - square root of `x` */
+    sk_env_put(global, "sqrt", sk_cfun(bif_sqrt));
+    /** `(ceil x)` - ceiling of `x` */
+    sk_env_put(global, "ceil", sk_cfun(bif_ceil));
+    /** `(floor x)` - floor of `x` */
+    sk_env_put(global, "floor", sk_cfun(bif_floor));
+    /** `(abs x)` - absolute value of `x` */
+    sk_env_put(global, "abs", sk_cfun(bif_fabs));
+    /** `(pow x y)` - `x` raised to the power of `y` */
+    sk_env_put(global, "pow", sk_cfun(bif_pow));
     /** `pi` - 3.14159... */
     sk_env_put(global, "pi", sk_number(M_PI));
 
     return global;
 }
-
-#if 0
-/* TODO: use this instead of the external ref counter */
-/* ---------------------------------------------------------------------------
-Reference counter for C.
-See also http://www.xs-labs.com/en/archives/articles/c-reference-counting/
---------------------------------------------------------------------------- */
-typedef struct refobj {
-    unsigned int refcnt;
-    ref_dtor dtor;
-} RefObj;
-
-void *rc_alloc(size_t size) {
-    void *data;
-    RefObj *r = malloc((sizeof *r) + size);
-    data = (char*)r + sizeof *r;
-    r->refcnt = 1;
-    r->dtor = NULL;
-    return data;
-}
-
-void *rc_retain(void *p) {
-    RefObj *r;
-    if(!p)
-        return NULL;
-    r = (RefObj *)((char *)p - sizeof *r);
-    r->refcnt++;
-    return p;
-}
-
-void rc_release(void *p) {
-    RefObj *r;
-    if(!p)
-        return;
-    r = (RefObj *)((char *)p - sizeof *r);
-    if(--r->refcnt == 0) {
-        if(r->dtor != NULL)
-            r->dtor(p);
-        free(r);
-    }
-}
-
-typedef void (*ref_dtor)(void *);
-
-void rc_set_dtor(void *p, ref_dtor dtor) {
-    RefObj *r;
-    if(!p) return;
-    r = (RefObj *)((char *)p - sizeof *r);
-    r->dtor = dtor;
-}
-#endif
-

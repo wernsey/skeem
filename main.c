@@ -93,9 +93,11 @@ static char *readfile(const char *fname) {
 
 /* Not invoked directly, but rather used as the destructor
  * I could've just used `fclose` directly and cast it to
- * a `cdata_dtor`, but I prefer this way.
+ * a `ref_dtor`, but I prefer it this because it is clearer
+ * in the later checks for `sk_get_cdtor(obj) != file_dtor`
+ * that you're actually doing a type check.
  */
-static void bif_fclose(void *p) {
+static void file_dtor(void *p) {
     FILE *f = p;
     assert(p);
     fclose(f);
@@ -110,7 +112,17 @@ static SkObj *bif_fopen(SkEnv *env, SkObj *e) {
     FILE *f = fopen(filename, filemode);
     if(!f)
         return sk_errorf("unable to open %s (%s): %s", filename, filemode, strerror(errno));
-    return sk_cdata(f, bif_fclose);
+    return sk_cdata(f, file_dtor);
+}
+
+static SkObj *bif_readfile(SkEnv *env, SkObj *e) {
+    const char *filename = sk_get_text(sk_car(e));
+    if(!filename[0])
+        return sk_error("'readfile' expects a filename and mode");
+    char *text = readfile(filename);
+    if(!text)
+        return sk_errorf("unable to read %s: %s", filename, strerror(errno));
+    return sk_value_o(text);
 }
 
 static SkObj *bif_fputs(SkEnv *env, SkObj *e) {
@@ -122,7 +134,7 @@ static SkObj *bif_fputs(SkEnv *env, SkObj *e) {
         Technically the `sk_is_cdata()` call here is not necessary because
         `sk_get_cdtor()` will also return NULL if it's not given a CDATA
     */
-    if(sk_is_null(file) || !sk_is_cdata(file) || sk_get_cdtor(file) != bif_fclose)
+    if(sk_is_null(file) || !sk_is_cdata(file) || sk_get_cdtor(file) != file_dtor)
         return sk_error("'fputs' expects a file as its first parameter");
     assert(sk_get_cdata(file)); /* shouldn't be null because of how `bif_fopen` works */
     FILE *f = sk_get_cdata(file);
@@ -133,7 +145,7 @@ static SkObj *bif_fputs(SkEnv *env, SkObj *e) {
 
 static SkObj *bif_fgets(SkEnv *env, SkObj *e) {
     SkObj *file = sk_car(e);
-    if(sk_is_null(file) || !sk_is_cdata(file) || sk_get_cdtor(file) != bif_fclose)
+    if(sk_is_null(file) || !sk_is_cdata(file) || sk_get_cdtor(file) != file_dtor)
         return sk_error("'fgets' expects a file as its first parameter");
     assert(sk_get_cdata(file));
     FILE *f = sk_get_cdata(file);
@@ -154,14 +166,15 @@ static SkObj *bif_fgets(SkEnv *env, SkObj *e) {
 
 static SkObj *bif_feof(SkEnv *env, SkObj *e) {
     SkObj *file = sk_car(e);
-    if(sk_is_null(file) || !sk_is_cdata(file) || sk_get_cdtor(file) != bif_fclose)
+    if(sk_is_null(file) || !sk_is_cdata(file) || sk_get_cdtor(file) != file_dtor)
         return sk_error("'feof' expects a file as its first parameter");
     assert(sk_get_cdata(file));
-    FILE *f = sk_get_cdata(file);
-	return sk_boolean(feof(f));
+	FILE *f = sk_get_cdata(file);
+    return sk_boolean(feof(f));
 }
 
 static void add_io_functions(SkEnv *global) {
+    sk_env_put(global, "readfile", sk_cfun(bif_readfile));
     sk_env_put(global, "fopen", sk_cfun(bif_fopen));
     sk_env_put(global, "fputs", sk_cfun(bif_fputs));
     sk_env_put(global, "fgets", sk_cfun(bif_fgets));

@@ -25,7 +25,7 @@
  * ## Expression objects
  *
  * All values and expressions in Skeem are represented in `SkObj` objects.
- * 
+ *
  *     typedef struct SkObj SkObj;
  *
  * The `SkObj` structure represents a Skeem expression or value, that can be
@@ -69,9 +69,9 @@ int sk_is_cons(SkObj *e);
 /**
  * #### CAR and CDR functions
  *
- * * `SkObj *sk_car(SkObj *e)` - returns the car of the cons cell, `NULL` 
+ * * `SkObj *sk_car(SkObj *e)` - returns the car of the cons cell, `NULL`
  *    if the expression is not a cons cell
- * * `SkObj *sk_cdr(SkObj *e)` - returns the cdr of the cons cell, `NULL` 
+ * * `SkObj *sk_cdr(SkObj *e)` - returns the cdr of the cons cell, `NULL`
  *    if the expression is not a cons cell
  * * `sk_caar(e)` - equivalent to `sk_car(sk_car(e))`, implemented as a macro.
  * * `sk_cadr(e)` - equivalent to `sk_car(sk_cdr(e))`, implemented as a macro.
@@ -137,6 +137,21 @@ SkObj *sk_value(const char *val);
 #else
 #  define sk_value(v) sk_value_(v, __FILE__, __LINE__)
 SkObj *sk_value_(const char *val, const char *file, int line);
+#endif
+/*
+ * #### `SkObj *sk_value_o(const char *val);`
+ *
+ * Creates a new value object with the given string value.
+ * It will take _ownership_ of the pointer passed to it: The
+ * pointer passed to it must be allocated on the heap.
+ * The interpreter will take responsibility for `free()`ing
+ * the memory at some point.
+ */
+#ifdef NDEBUG
+SkObj *sk_value_o(char *val);
+#else
+#  define sk_value_o(v) sk_value_o_(v, __FILE__, __LINE__)
+SkObj *sk_value_o_(char *val, const char *file, int line);
 #endif
 
 /**
@@ -208,11 +223,11 @@ int sk_is_true(SkObj *e);
  * from the Skeem language.
  *
  * The built-in functions in the global envronment are all built on top of
- * CFun functions. 
+ * CFun functions.
  *
  * #### `SkObj *sk_lambda(SkObj *args, SkObj *body)`
  *
- * Creates a new object of type Lambda with pointers to the list of 
+ * Creates a new object of type Lambda with pointers to the list of
  * arguments and the body of the lambda.
  */
 #ifdef NDEBUG
@@ -272,7 +287,7 @@ int sk_is_procedure(SkObj *e);
  *
  * #### `SkObj *sk_cdata(void *cdata, ref_dtor dtor);`
  *
- * Creates a new object of type CData with a pointer to the data. The pointer 
+ * Creates a new object of type CData with a pointer to the data. The pointer
  * can later be retrieved through `sk_get_cdata()`
  *
  * The `dtor` parameter is a pointer to a function that will be called by
@@ -304,7 +319,7 @@ void *sk_get_cdata(SkObj *e);
  * #### `ref_dtor sk_get_cdtor(SkObj *e)`
  *
  * Gets the destructor of the CData object. This can be useful for
- * checking whether a
+ * checking whether a CData object is of a specific type.
  *
  * Returns `NULL` if none or if `e` is not a CData object.
  */
@@ -490,9 +505,9 @@ SkObj *sk_eval(SkEnv *env, SkObj *e);
  *
  * Parses and evaluates a text string.
  *
- * It is equivalent to calling `sk_parse()` on `text`, then calling 
- * `sk_eval()` on the parsed `SkObj`. It checks the parsed `SkObj` for 
- * errors before 
+ * It is equivalent to calling `sk_parse()` on `text`, then calling
+ * `sk_eval()` on the parsed `SkObj`. It checks the parsed `SkObj` for
+ * errors before
  */
 SkObj *sk_eval_str(SkEnv *global, const char *text);
 
@@ -501,7 +516,7 @@ SkObj *sk_eval_str(SkEnv *global, const char *text);
  *
  * Applies the function `f` to a list of aruments `a` and
  * returns the result.
- * 
+ *
  * `f` must be a CFun or a lambda; that is `sk_is_procedure(f)` must
  * hold.
  */
