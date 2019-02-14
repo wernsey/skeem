@@ -1,4 +1,4 @@
-/**
+/*
  * Skeem - a small interpreter for a small subset of Scheme
  */
 #include <stdio.h>
@@ -1117,22 +1117,31 @@ COMPARE_FUNCTION(bif_string_lt, "string<?", strcmp(a, b) < 0)
 
 #define TEXT_LIB(g,t) do {SkObj *x=sk_eval_str(g,t);assert(!sk_is_error(x));rc_release(x);} while(0)
 
+/** ## Built-in Functions */
 SkEnv *sk_global_env() {
     SkEnv *global = sk_env_create(NULL);
 
+    /** `(write var)` - writes a serialized variable to `stdout` */
     sk_env_put(global, "write", sk_cfun(bif_write));
+    /** `(display str)` - writes string to `stdout` */
     sk_env_put(global, "display", sk_cfun(bif_display));
-    sk_env_put(global, "apply", sk_cfun(bif_apply));
+    /** `(cons car cdr)` - Creates a cons cell with the given car and cdr */
     sk_env_put(global, "cons", sk_cfun(bif_cons));
+    /** `(car c)` - returns the car of the cons cell `c` */
     sk_env_put(global, "car", sk_cfun(bif_car));
+    /** `(cdr c)` - returns the cdr of the cons cell `c` */
     sk_env_put(global, "cdr", sk_cfun(bif_cdr));
+    /** `(caar c)`, `(cadr c)`, `(cdar c)`, `(cddr c)` - extensions around `car` and `cdr` */
     TEXT_LIB(global,"(define (caar x) (car (car x)))");
     TEXT_LIB(global,"(define (cadr x) (car (cdr x)))");
     TEXT_LIB(global,"(define (cdar x) (cdr (car x)))");
     TEXT_LIB(global,"(define (cddr x) (cdr (cdr x)))");
+    /** `(list e1 e2 e3...)` - Creates a list consisting of `e1`, `e2`, `e3` etc */
     sk_env_put(global, "list", sk_cfun(bif_list));
-    sk_env_put(global, "list?", sk_cfun(bif_is_list));
+    /** `(length L)` - finds the length of the list `L` */
     sk_env_put(global, "length", sk_cfun(bif_length));
+    
+    sk_env_put(global, "list?", sk_cfun(bif_is_list));
     sk_env_put(global, "null?", sk_cfun(bif_is_null));
     sk_env_put(global, "symbol?", sk_cfun(bif_is_symbol));
     sk_env_put(global, "pair?", sk_cfun(bif_is_pair));
@@ -1141,40 +1150,59 @@ SkEnv *sk_global_env() {
     sk_env_put(global, "value?", sk_cfun(bif_is_value));
     TEXT_LIB(global,"(define (string? x) (and (value? x) (not (number? x))))");
     sk_env_put(global, "number?", sk_cfun(bif_is_number));
-    sk_env_put(global, "boolean?", sk_cfun(bif_is_boolean));
-    sk_env_put(global, "equal?", sk_cfun(bif_equal));
-    sk_env_put(global, "eq?", sk_cfun(bif_eq));
     TEXT_LIB(global,"(define (zero? x) (and (number? x) (= 0 x)))");
+    sk_env_put(global, "boolean?", sk_cfun(bif_is_boolean));
+    
+    /** `(equal? x y)` - Compares `x` and `y` for equality */
+    sk_env_put(global, "equal?", sk_cfun(bif_equal));
+    /** `(eq? x y)` - returns true if and only if `x` and `y` are the same object */
+    sk_env_put(global, "eq?", sk_cfun(bif_eq));    
+    /** `(not x)` - logical not. Returns `#f` if and only if `x` evaluates to `#t` */
     sk_env_put(global, "not", sk_cfun(bif_not));
+    /** `(apply f '(arg1 arg2))` - Applies a function to the given arguments */
+    sk_env_put(global, "apply", sk_cfun(bif_apply));
+    /** `(+ v1 v2...)`, `(- v1 v2...)`, `(* v1 v2...)`, `(/ v1 v2...)`, `(% v1 v2...)` - Arithmetic operators */
     sk_env_put(global, "+", sk_cfun(bif_add));
     sk_env_put(global, "-", sk_cfun(bif_sub));
     sk_env_put(global, "*", sk_cfun(bif_mul));
     sk_env_put(global, "/", sk_cfun(bif_div));
     sk_env_put(global, "%", sk_cfun(bif_mod));
+    /** `(= v1 v2)`, `(> v1 v2)`, `(< v1 v2)`, `(>= v1 v2)`, `(<= v1 v2)` - Comparison operators */
     sk_env_put(global, "=", sk_cfun(bif_number_eq));
     sk_env_put(global, ">", sk_cfun(bif_gt));
     sk_env_put(global, "<", sk_cfun(bif_lt));
     sk_env_put(global, ">=", sk_cfun(bif_ge));
     sk_env_put(global, "<=", sk_cfun(bif_le));
+    /** `(map f L)` - Returns a list where each element is the result of the function `f` applied to the
+     * corresponding element in the list `L` */
     sk_env_put(global, "map", sk_cfun(bif_map));
+    /** `(filter f L)` - Returns a list  */
     sk_env_put(global, "filter", sk_cfun(bif_filter));
+    /** `(append L1 L2)` - Returns containing the elements of */
     sk_env_put(global, "append", sk_cfun(bif_append));
 
+    /** `(fold f i L)` and `(fold-right f i L)` - Folds a list `L` using function `f` with the initial value `i` */
     TEXT_LIB(global,"(define (fold f i L) (if (null? L) i (fold f (f (car L) i) (cdr L))))");
     TEXT_LIB(global,"(define (fold-right f i L) (if (null? L) i (f (car L) (fold-right f i (cdr L)))))");
+    /** `(reverse L)` - Reverses a list `L` */
     TEXT_LIB(global,"(define (reverse l) (fold cons '() l))");
+    /** `(range a b)` - Returns a list of all the integers between `a` and `b` */
     TEXT_LIB(global,"(define (range a b) (if (= a b) (list b) (cons a (range (+ a 1) b))))");
+    /** `(nth n L)` - Returns the `n`-th element of the list `L` */
     TEXT_LIB(global,"(define (nth n L) (if (or (null? L) (< n 0)) '() (if (= n 1) (car L) (nth (- n 1) (cdr L)))))");
 
+    /** `(string-length s)` - returns the length of the string `s` */
     sk_env_put(global, "string-length?", sk_cfun(bif_string_length));
+    /** `(string-append s1 s2...)` - Appends all parameters into a new string. */
     sk_env_put(global, "string-append", sk_cfun(bif_string_append));
     TEXT_LIB(global,"(define (non-empty-string? x) (not (= 0 (string-length? x))))");
+    /** `(string=? s1 s2)`, `(string<? s1 s2)`, `(string<=? s1 s2)`, `(string>? s1 s2)` and `(string>=? s1 s2)` - strings comparisons between `s1` and `s2` */
     sk_env_put(global, "string=?", sk_cfun(bif_string_eq));
     sk_env_put(global, "string<?", sk_cfun(bif_string_lt));
     TEXT_LIB(global,"(define (string<=? a b) (or (string<? a b) (string=? a b)))");
     TEXT_LIB(global,"(define (string>? a b) (not (string<=? a b)))");
     TEXT_LIB(global,"(define (string>=? a b) (not (string<? a b)))");
-
+    /** `pi` - 3.14159... */
     sk_env_put(global, "pi", sk_number(M_PI));
 
     return global;

@@ -335,7 +335,7 @@ function filter(st,       res,tmp, linkdesc, url, delim, edelim, name, def) {
                 Buf = "";
             }
         } else
-            Buf = Buf st "\n";
+            Buf = Buf scrub(st) "\n";
         LastLink = 0;
     } else if(Mode == "blockquote") {
         if(match(st, /^[[:space:]]*>[[:space:]]*$/))

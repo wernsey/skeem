@@ -50,8 +50,8 @@ docs: docsdir docs/skeem.html docs/README.html
 docsdir:
 	-mkdir docs
 
-docs/skeem.html: skeem.h d.awk
-	$(AWK) -v Title="API Documentation" -f d.awk $< > $@
+docs/skeem.html: skeem.h skeem.c d.awk
+	$(AWK) -v Title="API Documentation" -f d.awk skeem.h skeem.c > $@
 
 docs/README.html: README.md d.awk
 	$(AWK) -f d.awk -v Clean=1 -v Title="README" $< > $@

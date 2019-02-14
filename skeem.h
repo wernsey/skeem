@@ -5,7 +5,7 @@
  * with [reference counting][refcnt] for memory management.
  *
  * It has a simplified C API so that it can be embedded into other programs
- * in order to enable scripting.
+ * to allow you to apply [Greenspun's tenth rule][greenspun] with ease.
  *
  * It is based mostly on Peter Norvig's [lispy][] interpreter with some
  * elements from [part 2][lispy2]. The reference counter was inspired by
@@ -18,6 +18,7 @@
  * [lispy2]: http://norvig.com/lispy2.html
  * [refcnt]: https://en.wikipedia.org/wiki/Reference_counting
  * [refcnt-c]: https://xs-labs.com/en/archives/articles/c-reference-counting/
+ * [greenspun]: https://en.wikipedia.org/wiki/Greenspun%27s_tenth_rule
  */
 
 /**
