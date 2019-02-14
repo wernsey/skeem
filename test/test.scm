@@ -82,8 +82,6 @@
 (display "Test 36 ............................:" (test-equal X 100))
 (display "Test 37 ............................:" (test-equal Y 200))
 
-
-
 (display "Test 38 ............................:" (test (number? '1)))
 (display "Test 38 ............................:" (test (number? '+1)))
 (display "Test 38 ............................:" (test (number? '-1)))
@@ -96,6 +94,24 @@
 (display "Test 38 ............................:" (test (number? '-14e1)))
 (display "Test 38 ............................:" (test (number? '-14e+5)))
 (display "Test 38 ............................:" (test-not (number? '-14e-5-5)))
+(display "Test 38 ............................:" (test-not (number? '+)))
+(display "Test 38 ............................:" (test-not (number? '-)))
+(display "Test 38 ............................:" (test-not (number? 'e)))
+(display "Test 38 ............................:" (test-not (number? 'f)))
+(display "Test 38 ............................:" (test (number? '1)))
+(display "Test 38 ............................:" (test (number? '2)))
+(display "Test 38 ............................:" (test (number? '2e3)))
+(display "Test 38 ............................:" (test-not (number? '2e3a)))
+(display "Test 38 ............................:" (test (number? '2e+3)))
+(display "Test 38 ............................:" (test (number? '2e-3)))
+(display "Test 38 ............................:" (test-not (number? 'e-3)))
+(display "Test 38 ............................:" (test-not (number? '-e-3)))
+(display "Test 38 ............................:" (test (number? '-1e-3)))
+(display "Test 38 ............................:" (test-not (number? 'a)))
+(display "Test 38 ............................:" (test (number? "-1e-3")))
+(display "Test 38 ............................:" (test (number? -1e-3)))
+(display "Test 38 ............................:" (test-not (number? "")))
+
 
 (display "Test 98 ............................:" (test-equal "\65\97" "Aa"))
 ; Because strings are nul-terminated internally, the following are equal:

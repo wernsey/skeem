@@ -66,6 +66,9 @@ Articles/links that might come in useful in the future
 * Like in [Racket](https://stackoverflow.com/a/41417968/115589), square brackets `[]` can be used interchangeably with parentheses `()`.
 * Don't count on arithmetic to be too accurate, due to all the `atof`ing and `snprintf`ing going on behind the scenes.
   * Storing everything in strings sounded like a good idea at the start, but it doesn't seem that way any more.
+* `<facepalm emoji>` Skeem has tail call optimization, but not on reference counter:
+  If you call `rc_release()` on a long list it will recursively call `rc_release()` on its cdr.
+  You could fix this with an iteration in `SkExpr_dtor()`; It only needs to be done for the `CONS` case.
 
 ### TODOs
 

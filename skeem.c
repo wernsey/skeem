@@ -12,8 +12,6 @@
 #include "refcnt.h"
 #include "skeem.h"
 
-#define HASH_SIZE 32
-
 #ifdef NDEBUG
 #  define MEMCHECK(p) if(!p) abort() /* You're doomed */
 #else
@@ -39,6 +37,10 @@ typedef struct SkObj {
     };
 } SkObj;
 
+/* =============================================================
+  Environments
+============================================================= */
+
 typedef struct hash_element {
     char *name;
     SkObj *ex;
@@ -46,13 +48,14 @@ typedef struct hash_element {
 } hash_element;
 
 typedef struct SkEnv {
-    struct hash_element *table[HASH_SIZE];
+    struct hash_element **table;
+    unsigned int mask;
     struct SkEnv *parent;
 } SkEnv;
 
 static void env_dtor(SkEnv *env) {
     int i;
-    for(i = 0; i < HASH_SIZE; i++) {
+    for(i = 0; i <= env->mask; i++) {
         while(env->table[i]) {
             hash_element* v = env->table[i];
             env->table[i] = v->next;
@@ -60,18 +63,18 @@ static void env_dtor(SkEnv *env) {
             free(v->name);
             free(v);
         }
-        env->table[i] = NULL;
     }
+    free(env->table);
     rc_release(env->parent);
 }
 
 SkEnv *sk_env_create(SkEnv *parent) {
-    int i;
     SkEnv *env = rc_alloc(sizeof *env);
+    unsigned int size = 32; /* size *must* be a power of 2 */
+    env->mask = size-1;
+    env->table = calloc(size, sizeof *env->table);
+    env->parent = rc_retain(parent);
     rc_set_dtor(env, (ref_dtor)env_dtor);
-    for(i = 0; i < HASH_SIZE; i++)
-        env->table[i] = NULL;
-    env->parent = parent ? rc_retain(parent) : NULL;
     return env;
 }
 
@@ -80,11 +83,11 @@ static unsigned int hash(const char *s) {
     /* DJB hash, XOR variant */
     for(;s[0];s++)
         h = ((h << 5) + h) ^ s[0];
-    return h % HASH_SIZE;
+    return h;
 }
 
 SkObj *sk_env_put(SkEnv *env, const char *name, SkObj *e) {
-    unsigned int h = hash(name);
+    unsigned int h = hash(name) & env->mask;
 
     hash_element *v, *f = NULL;
     if(!env)
@@ -119,12 +122,16 @@ static hash_element *env_findg_r(SkEnv *env, const char *name, unsigned int h) {
 }
 
 SkObj *sk_env_get(SkEnv *env, const char *name) {
-    unsigned int h = hash(name);
+    unsigned int h = hash(name) & env->mask;
     hash_element* v = env_findg_r(env, name, h);
     if(v)
         return v->ex;
     return sk_errorf("no such variable '%s'", name);
 }
+
+/* =============================================================
+  Objects
+============================================================= */
 
 static void SkExpr_dtor(SkObj *e) {
     switch(e->type) {
@@ -342,131 +349,6 @@ int sk_equal(SkObj *a, SkObj *b) {
     return 1;
 }
 
-static char *buffer_appendn(char **buf, int *n, int *a, const char *s, int len) {
-    assert(buf && n && a && s);
-    int nlen;
-    if(!*buf) {
-        *a = 32;
-        while(*a < len + 1) *a <<= 1;
-        *buf = malloc(*a);
-        MEMCHECK(*buf);
-        strncpy(*buf, s, len);
-        (*buf)[len] = '\0';
-        *n = len;
-        return *buf;
-    }
-    nlen = *n + len;
-    if(*a < nlen + 1) {
-        while(*a < nlen + 1) *a <<= 1;
-        *buf = realloc(*buf, *a);
-        MEMCHECK(*buf);
-    }
-    strncpy(*buf + *n, s, len);
-    *n = nlen;
-    (*buf)[nlen] = '\0';
-    return *buf;
-}
-
-static char *buffer_append(char **buf, int *n, int *a, const char *s) {
-    return buffer_appendn(buf, n, a, s, strlen(s));
-}
-
-static char *buffer_appendf(char **buf, int *n, int *a, const char *fmt, ...) {
-    va_list arg;
-    char buffer[512];
-    va_start(arg, fmt);
-    vsnprintf (buffer, sizeof(buffer)-1, fmt, arg);
-    va_end(arg);
-    return buffer_append(buf, n, a, buffer);
-}
-
-static void serialize_r(char **buf, int *n, int *a, SkObj *e) {
-    if(!e)
-        buffer_append(buf, n, a, "'() ");
-    else switch(e->type) {
-        case CFUN: buffer_appendf(buf, n, a, "#<cfun:%p> ", e->func); break;
-        case CDATA: buffer_appendf(buf, n, a, "<cdata:%p;%p>", e->cdtor, e->cdata); break;
-        case ERROR: buffer_appendf(buf, n, a, "#<error:%s> ", e->value); break;
-        case SYMBOL: buffer_appendf(buf, n, a, "%s ", e->value); break;
-        case TRUE: buffer_append(buf, n, a, "#t "); break;
-        case FALSE: buffer_append(buf, n, a, "#f "); break;
-        case VALUE: {
-            buffer_appendf(buf, n, a, "\"");
-            char *s = e->value;
-            int i = 0;
-            while(s[i]) {
-                if(s[i] < ' ') {
-                    buffer_appendn(buf, n, a, s, i);
-                    switch(s[i]) {
-                    case '\n': buffer_appendn(buf, n, a, "\\n", 2); break;
-                    case '\r': buffer_appendn(buf, n, a, "\\r", 2); break;
-                    case '\t': buffer_appendn(buf, n, a, "\\t", 2); break;
-                    case '\b': buffer_appendn(buf, n, a, "\\b", 2); break;
-                    case '\a': buffer_appendn(buf, n, a, "\\a", 2); break;
-                    default: buffer_appendf(buf, n, a, "\\%d", s[i]); break;
-                    }
-                    s += i + 1;
-                    i = 0;
-                } else if(strchr("\\\"", s[i])) {
-                    buffer_appendn(buf, n, a, s, i);
-                    buffer_appendf(buf, n, a, "\\%c", s[i]);
-                    s += i + 1;
-                    i = 0;
-                } else
-                    i++;
-            }
-            buffer_appendn(buf, n, a, s, i);
-            buffer_appendf(buf, n, a, "\" ");
-        } break;
-        case CONS:
-            buffer_append(buf, n, a, "( ");
-            for(;;) {
-                serialize_r(buf, n, a, e->car);
-                if(e->cdr) {
-                    if(e->cdr->type == CONS)
-                        e = e->cdr;
-                    else {
-                        buffer_append(buf, n, a, ". ");
-                        serialize_r(buf, n, a, e->cdr);
-                        break;
-                    }
-                } else
-                    break;
-            }
-            buffer_appendf(buf, n, a, ") ");
-            break;
-        case LAMBDA:
-            buffer_append(buf, n, a, "(lambda ");
-            serialize_r(buf, n, a, e->args);
-            buffer_append(buf, n, a, " ");
-            serialize_r(buf, n, a, e->body);
-            buffer_append(buf, n, a, ") ");
-            break;
-    }
-}
-
-char *sk_serialize(SkObj *e) {
-    int n = 0, a = 256;
-    char *buf = malloc(a);
-    MEMCHECK(buf);
-    serialize_r(&buf, &n, &a, e);
-    return buf;
-}
-
-int sk_check_numeric(const char *c) {
-    /*return isdigit(c[0]) || (strchr("+-", c[0]) && isdigit(c[1]));*/
-    int ds = 0, de = 0;
-    if(strchr("+-", *c))
-        c++;
-    if(!*c) return 0;
-    while(isdigit(*c) || (*c == '.' && !ds++) || ((*c == 'e' || *c == 'E') && !de++)) {
-        if((*c == 'e' || *c == 'E') && (c[1] == '-' || c[1] == '+'))
-            c++;
-        c++;
-    }
-    return !*c;
-}
-
 const char *sk_get_text(SkObj *e) {
     if(!e) return "";
     if(e->type == TRUE)
@@ -474,6 +356,16 @@ const char *sk_get_text(SkObj *e) {
     else if(e->type == FALSE)
         return "false";
     return (e->type == VALUE || e->type == SYMBOL || e->type == ERROR) ? e->value : "";
+}
+
+SkObj *sk_car(SkObj *e) {
+    if(!e || e->type != CONS) return NULL;
+    return e->car;
+}
+
+SkObj *sk_cdr(SkObj *e) {
+    if(!e || e->type != CONS) return NULL;
+    return e->cdr;
 }
 
 int sk_is_null(SkObj *e) {
@@ -521,6 +413,30 @@ int sk_is_list(SkObj *e) {
         if(e->type != CONS)
             return 0;
     return 1;
+}
+
+int sk_length(SkObj *e) {
+    int count = 0;
+    for(; e && e->type == CONS; e = e->cdr) count++;
+    return count;
+}
+
+/* =============================================================
+  Parser
+============================================================= */
+
+int sk_check_numeric(const char *c) {
+    /*return isdigit(c[0]) || (strchr("+-", c[0]) && isdigit(c[1]));*/
+    int ds = 0, de = 0;
+    if(strchr("+-", *c))
+        c++;
+    if(!*c || !isdigit(*(c++))) return 0;
+    while(isdigit(*c) || (*c == '.' && !ds++) || ((*c == 'e' || *c == 'E') && !de++)) {
+        if((*c == 'e' || *c == 'E') && (c[1] == '-' || c[1] == '+'))
+            c++;
+        c++;
+    }
+    return !*c;
 }
 
 enum scan_result {
@@ -719,21 +635,124 @@ static SkEnv *get_global(SkEnv *env) {
     return env;
 }
 
-SkObj *sk_car(SkObj *e) {
-    if(!e || e->type != CONS) return NULL;
-    return e->car;
+/* =============================================================
+  Serialization
+============================================================= */
+
+static char *buffer_appendn(char **buf, int *n, int *a, const char *s, int len) {
+    assert(buf && n && a && s);
+    int nlen;
+    if(!*buf) {
+        *a = 32;
+        while(*a < len + 1) *a <<= 1;
+        *buf = malloc(*a);
+        MEMCHECK(*buf);
+        strncpy(*buf, s, len);
+        (*buf)[len] = '\0';
+        *n = len;
+        return *buf;
+    }
+    nlen = *n + len;
+    if(*a < nlen + 1) {
+        while(*a < nlen + 1) *a <<= 1;
+        *buf = realloc(*buf, *a);
+        MEMCHECK(*buf);
+    }
+    strncpy(*buf + *n, s, len);
+    *n = nlen;
+    (*buf)[nlen] = '\0';
+    return *buf;
 }
 
-SkObj *sk_cdr(SkObj *e) {
-    if(!e || e->type != CONS) return NULL;
-    return e->cdr;
+static char *buffer_append(char **buf, int *n, int *a, const char *s) {
+    return buffer_appendn(buf, n, a, s, strlen(s));
 }
 
-int sk_length(SkObj *e) {
-    int count = 0;
-    for(; e && e->type == CONS; e = e->cdr) count++;
-    return count;
+static char *buffer_appendf(char **buf, int *n, int *a, const char *fmt, ...) {
+    va_list arg;
+    char buffer[512];
+    va_start(arg, fmt);
+    vsnprintf (buffer, sizeof(buffer)-1, fmt, arg);
+    va_end(arg);
+    return buffer_append(buf, n, a, buffer);
 }
+
+static void serialize_r(char **buf, int *n, int *a, SkObj *e) {
+    if(!e)
+        buffer_append(buf, n, a, "'() ");
+    else switch(e->type) {
+        case CFUN: buffer_appendf(buf, n, a, "#<cfun:%p> ", e->func); break;
+        case CDATA: buffer_appendf(buf, n, a, "<cdata:%p;%p>", e->cdtor, e->cdata); break;
+        case ERROR: buffer_appendf(buf, n, a, "#<error:%s> ", e->value); break;
+        case SYMBOL: buffer_appendf(buf, n, a, "%s ", e->value); break;
+        case TRUE: buffer_append(buf, n, a, "#t "); break;
+        case FALSE: buffer_append(buf, n, a, "#f "); break;
+        case VALUE: {
+            buffer_appendf(buf, n, a, "\"");
+            char *s = e->value;
+            int i = 0;
+            while(s[i]) {
+                if(s[i] < ' ') {
+                    buffer_appendn(buf, n, a, s, i);
+                    switch(s[i]) {
+                    case '\n': buffer_appendn(buf, n, a, "\\n", 2); break;
+                    case '\r': buffer_appendn(buf, n, a, "\\r", 2); break;
+                    case '\t': buffer_appendn(buf, n, a, "\\t", 2); break;
+                    case '\b': buffer_appendn(buf, n, a, "\\b", 2); break;
+                    case '\a': buffer_appendn(buf, n, a, "\\a", 2); break;
+                    default: buffer_appendf(buf, n, a, "\\%d", s[i]); break;
+                    }
+                    s += i + 1;
+                    i = 0;
+                } else if(strchr("\\\"", s[i])) {
+                    buffer_appendn(buf, n, a, s, i);
+                    buffer_appendf(buf, n, a, "\\%c", s[i]);
+                    s += i + 1;
+                    i = 0;
+                } else
+                    i++;
+            }
+            buffer_appendn(buf, n, a, s, i);
+            buffer_appendf(buf, n, a, "\" ");
+        } break;
+        case CONS:
+            buffer_append(buf, n, a, "( ");
+            for(;;) {
+                serialize_r(buf, n, a, e->car);
+                if(e->cdr) {
+                    if(e->cdr->type == CONS)
+                        e = e->cdr;
+                    else {
+                        buffer_append(buf, n, a, ". ");
+                        serialize_r(buf, n, a, e->cdr);
+                        break;
+                    }
+                } else
+                    break;
+            }
+            buffer_appendf(buf, n, a, ") ");
+            break;
+        case LAMBDA:
+            buffer_append(buf, n, a, "(lambda ");
+            serialize_r(buf, n, a, e->args);
+            buffer_append(buf, n, a, " ");
+            serialize_r(buf, n, a, e->body);
+            buffer_append(buf, n, a, ") ");
+            break;
+    }
+}
+
+char *sk_serialize(SkObj *e) {
+    int n = 0, a = 256;
+    char *buf = malloc(a);
+    MEMCHECK(buf);
+    serialize_r(&buf, &n, &a, e);
+    return buf;
+}
+
+/* =============================================================
+  Interpreter
+============================================================= */
 
 static SkObj *bind_args(SkEnv *env, SkObj *e) {
     assert(e->type == CONS);
@@ -1003,6 +1022,9 @@ SkObj *sk_apply(SkEnv *env, SkObj *f, SkObj *a) {
 }
 
 #if 0
+/* =============================================================
+  Reference Counter
+============================================================= */
 /* TODO: use this instead of the external ref counter */
 typedef struct refobj {
     unsigned int refcnt;
@@ -1048,6 +1070,10 @@ void rc_set_dtor(void *p, ref_dtor dtor) {
     r->dtor = dtor;
 }
 #endif
+
+/* =============================================================
+  Library
+============================================================= */
 
 static SkObj *bif_serialize(SkEnv *env, SkObj *e) {
     if(sk_is_null(sk_car(e)))
@@ -1480,7 +1506,7 @@ SkEnv *sk_global_env() {
     sk_env_put(global, "string-length?", sk_cfun(bif_string_length));
     /** `(string-append s1 s2...)` - Appends all parameters into a new string. */
     sk_env_put(global, "string-append", sk_cfun(bif_string_append));
-    /** `(string-replace str find repl)` - */
+    /** `(string-replace str find repl)` - Replaces all occurances of `find` in the string `str` with `repl` */
     sk_env_put(global, "string-replace", sk_cfun(bif_string_replace));
     /** `(string-split str sep)` - Splits a string `str` into a list of substrings */
     sk_env_put(global, "string-split", sk_cfun(bif_string_split));
