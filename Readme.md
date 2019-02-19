@@ -66,9 +66,11 @@ Articles/links that might come in useful in the future
 * Like in [Racket](https://stackoverflow.com/a/41417968/115589), square brackets `[]` can be used interchangeably with parentheses `()`.
 * Don't count on arithmetic to be too accurate, due to all the `atof`ing and `snprintf`ing going on behind the scenes.
   * Storing everything in strings sounded like a good idea at the start, but it doesn't seem that way any more.
-* `<facepalm emoji>` Skeem has tail call optimization, but not on reference counter:
+* Skeem has tail call optimization, but not on reference counter:
   If you call `rc_release()` on a long list it will recursively call `rc_release()` on its cdr.
-  You could fix this with an iteration in `SkExpr_dtor()`; It only needs to be done for the `CONS` case.
+* My functions `string-ascii` and `string-char` are stand-ins for the `char->integer` and `integer->char` functions. See [here][scheme-types].
+
+[scheme-types]: https://ds26gte.github.io/tyscheme/index-Z-H-4.html
 
 ### TODOs
 
@@ -109,9 +111,15 @@ Articles/links that might come in useful in the future
   The implementation of `call/cc` would need some way to identify itself if you were to have nested `call/cc`s.
   I think using the value of the `SkObj *` pointer passed to the `call_cc` CFun will be sufficient.  \
   Here's [another link][callcc]
-* [ ] **(6) Procedures with arbitrary number of arguments** from [lispy2][] shouldn't be too difficult to implement.
-  If I ever implement the `(x . y)` syntax, the `(arg1 arg2 . rest)` syntax should also be doable.
-* [ ] Implement [dotted pairs](https://ds26gte.github.io/tyscheme/index-Z-H-4.html#node_sec_2.2.3)
+* [x] **(6) Procedures with arbitrary number of arguments** from [lispy2][] shouldn't be too difficult to implement.
+  * [x] It now supports the `(define x (lambda args (display args)))` syntax.
+  * [x] If I ever implement the `(x . y)` syntax, the `(arg1 arg2 . rest)` syntax should also be doable.
+* [x] Implement [dotted pairs](https://ds26gte.github.io/tyscheme/index-Z-H-4.html#node_sec_2.2.3)
+
+Here is the Awk script to renumber the tests in test/test.scm
+
+    awk '{if($0 ~ /Test [0-9]+/)gsub(/Test [0-9]+/,"Test " (++i));print}' test/test.scm
+
 
 [callcc]: https://ds26gte.github.io/tyscheme/index-Z-H-15.html#node_chap_13
 

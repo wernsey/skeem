@@ -381,6 +381,13 @@ int sk_equal(SkObj *a, SkObj *b);
 char *sk_serialize(SkObj *e);
 
 /**
+ * #### `void sk_write(SkObj *e, FILE *f);`
+ *
+ * Serializes the object `e` and writes it to the file `f`.
+ */
+void sk_write(SkObj *e, FILE *f);
+
+/**
  * #### `int sk_check_numeric(const char *s);`
  *
  * Checks the string `s` to see if it can be used as a number
@@ -523,4 +530,3 @@ SkObj *sk_eval_str(SkEnv *global, const char *text);
  * hold.
  */
 SkObj *sk_apply(SkEnv *env, SkObj *f, SkObj *a);
-

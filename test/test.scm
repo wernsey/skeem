@@ -112,10 +112,19 @@
 (display "Test 38 ............................:" (test (number? -1e-3)))
 (display "Test 38 ............................:" (test-not (number? "")))
 
+; Some older tests ended up here
+(define sq (lambda (x) (* x x)))
+(display "Test 39 ............................:" (test-equal (sq 10) 100))
+(display "Test 40 ............................:" (test-equal (sq 16) 256))
+(display "Test 41 ............................:" (test-equal (map sq '(1 2 3 4 5 6 7 8 9)) '( "1" "4" "9" "16" "25" "36" "49" "64" "81" )))
+(display "Test 42 ............................:" (test-equal (apply + '(1 2 3)) 6 ))
+(display "Test 43 ............................:" (test-equal (map (lambda (x) (* x 11)) '(1 2 3 4 5 6 7 8 9))  '( "11" "22" "33" "44" "55" "66" "77" "88" "99" ) ))
+(display "Test 44 ............................:" (test-equal (apply (lambda (x y z) (+ (* 100 x) (* 10 y) z)) '(1 2 3))  123 ))
 
-(display "Test 98 ............................:" (test-equal "\65\97" "Aa"))
+; Use \number to input other special characters
+(display "Test 45 ............................:" (test-equal "\65\97" "Aa"))
 ; Because strings are nul-terminated internally, the following are equal:
-(display "Test 98 ............................:" (test-equal "xxxx\0xxxxxx" "xxxx"))
+(display "Test 46 ............................:" (test-equal "xxxx\0xxxxxx" "xxxx"))
 
 (display "Test 98 ............................:" (test-equal (substring "Hello World" 6) "World"))
 (display "Test 98 ............................:" (test-equal (substring "Hello World" -1) ""))
@@ -175,7 +184,6 @@
 
 (display "Test 100 ...........................:" (test-equal (serialize string<=?) "(lambda ( a b )  ( begin ( or ( string<? a b ) ( string=? a b ) ) ) ) " ))
 
-
 (define P '(1 2 3 4))
 (define Q '(x y z))
 (display "Test 101 ...........................:" (test-equal (append P Q) '( "1" "2" "3" "4" x y z ) ))
@@ -196,3 +204,39 @@
 (display "Test 103 ...........................:" (test-equal (string-replace "Hello World" "ld" "LD") "Hello WorLD"))
 (display "Test 103 ...........................:" (test-equal (string-replace "Hello World" "xx" "LD") "Hello World"))
 (display "Test 103 ...........................:" (test-equal (string-replace "" "hello" "world") ""))
+
+; Dotted pair notation
+(display "Test 104 ...........................:" (test-equal '( 1 . 2 ) (cons 1 2)))
+(display "Test 104 ...........................:" (test-equal '( 1 . ( 2 . ( 3 . ( 4 . ())))) (list 1 2 3 4)))
+
+; Variadic lambdas
+(define sum (lambda args (apply + args)))
+(display "Test 104 ...........................:" (test-equal (sum 1 2 3 4 5 6 7) 28))
+(define foo (lambda (a b . c) (* (+ a b) (apply + c))))
+(display "Test 104 ...........................:" (test-equal (foo 5 5 1 2 3 4 5 6 7) 280))
+(define (bar a b . c) (* (+ a b) (apply + c)))
+(display "Test 104 ...........................:" (test-equal (bar 5 5 1 2 3 4 5 6 7) 280))
+
+(display "Test 105 ...........................:" (test (member? 6 '(3 4 6 7 3 2 1 8 4 3 7 6))))
+(display "Test 105 ...........................:" (test (member? 3 '(3 4 6 7 3 2 1 8 4 3 7 6))))
+(display "Test 105 ...........................:" (test-not (member? 9 '(3 4 6 7 3 2 1 8 4 3 7 6))))
+(display "Test 105 ...........................:" (test-not (member? 0 '(3 4 6 7 3 2 1 8 4 3 7 6))))
+(display "Test 105 ...........................:" (test-equal (member 1 '[3 4 6 7 3 2 1 8 4 3 7 6]) '[1 8 4 3 7 6] ))
+(display "Test 106 ...........................:" (test-equal (member 0 '[3 4 6 7 3 2 1 8 4 3 7 6]) #f ))
+
+(display "Test 107 ...........................:" (test-equal (max 3 4 6 7 3 2 1 8 4 3 7 6) 8))
+(display "Test 108 ...........................:" (test-equal (min 3 4 6 7 3 2 1 8 4 3 7 6) 1))
+
+; This one takes a list as argument
+(define (maxn args)
+    (if (null? (cdr args))
+        (car args)
+        (let ([a (car args)]
+              [b (maxn (cdr args))])
+            (if (> a b) a b)
+        )))
+; The variadic version could just use the list version:
+(define (maxx . args) (maxn args))
+
+(display "Test 109 ...........................:" (test-equal (maxx 3 4 6 7 3 2 1 8 4 3 7 6) 8))
+(display "Test 109 ...........................:" (test-equal (maxn '(3 4 6 7 3 2 1 8 4 3 7 6)) 8))

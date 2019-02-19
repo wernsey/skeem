@@ -470,7 +470,7 @@ restart:
             in++;
         }
         goto restart;
-    } else if (strchr("()[]'", *in)) {
+    } else if (strchr("()[]'.", *in)) {
         tok[0] = *in;
         tok[1] ='\0';
         *rem =  ++in;
@@ -579,6 +579,23 @@ static SkObj *parse0(Parser *p) {
             } else if(accept(p, SCAN_END)) {
                 rc_release(list);
                 return sk_errorf("expected '%c'", term);
+            } else if(accept(p, '.')) {
+                if(!last) {
+                    rc_release(list);
+                    return sk_errorf("unexpected '.'");
+                }
+                SkObj *e = parse0(p);
+                if(sk_is_error(e)) {
+                    rc_release(list);
+                    return e;
+                }
+                last->cdr = e;
+                if(!accept(p, term)) {
+                    rc_release(list);
+                    return sk_errorf("expected '%c'", term);
+                }
+
+                return list;
             }
 
             SkObj *e = parse0(p);
@@ -682,7 +699,7 @@ static void serialize_r(char **buf, int *n, int *a, SkObj *e) {
         buffer_append(buf, n, a, "'() ");
     else switch(e->type) {
         case CFUN: buffer_appendf(buf, n, a, "#<cfun:%p> ", e->func); break;
-        case CDATA: buffer_appendf(buf, n, a, "<cdata:%p;%p>", e->cdtor, e->cdata); break;
+        case CDATA: buffer_appendf(buf, n, a, "#<cdata:%p;%p>", e->cdtor, e->cdata); break;
         case ERROR: buffer_appendf(buf, n, a, "#<error:%s> ", e->value); break;
         case SYMBOL: buffer_appendf(buf, n, a, "%s ", e->value); break;
         case TRUE: buffer_append(buf, n, a, "#t "); break;
@@ -750,6 +767,12 @@ char *sk_serialize(SkObj *e) {
     return buf;
 }
 
+void sk_write(SkObj *e, FILE *f) {
+    char *buf = sk_serialize(e);
+    fputs(buf, f);
+    free(buf);
+}
+
 /* =============================================================
   Interpreter
 ============================================================= */
@@ -772,9 +795,12 @@ static int valid_lambda(SkObj *l) {
     if(l->type != LAMBDA) return 0;
     if(!sk_is_null(l->args)) {
         SkObj *e;
-        for(e = l->args; e; e = e->cdr)
-            if(e->type != CONS || e->car->type != SYMBOL)
+        for(e = l->args; e; e = e->cdr) {
+            if(sk_is_symbol(e))
+                break;
+            else if(e->type != CONS)
                 return 0;
+        }
     }
     return sk_is_list(l->body);
 }
@@ -808,41 +834,37 @@ SkObj *sk_eval(SkEnv *env, SkObj *e) {
                 e = e->cdr;
 
                 const char *varname;
-                if(sk_is_list(e->car)) {
-                    /* `(define (f a b c) (body))` form */
-                    SkObj *f = e->car, *p = f->cdr;
-                    if(sk_length(f) < 1) {
+                if(sk_is_cons(e->car)) {
+                    /* `(define (f a b c) (body))` or `(define (f . args) (body))` forms */
+                    SkObj *f = e->car;
+                    if(!sk_is_symbol(f->car)) {
                         result = sk_error("define lambda needs function name");
                         break;
                     }
                     varname = sk_get_text(f->car);
 
-                    SkObj *body = sk_cons(sk_symbol("begin"), e->cdr ? rc_retain(e->cdr) : NULL);
-
-                    p = p ? rc_retain(p) : NULL;
-
-                    result = sk_lambda(p, body);
-
+                    SkObj *body = sk_cons(sk_symbol("begin"), rc_retain(e->cdr));
+                    result = sk_lambda(rc_retain(f->cdr), body);
                     if(!valid_lambda(result)) {
                         rc_release(result);
                         result = sk_error("invalid lambda define");
                         break;
                     }
-                } else {
+                } else if(sk_is_symbol(e->car)) {
                     /* `(define v expr)` form */
                     varname = sk_get_text(e->car);
-                    result = sk_eval(env, e->cdr->car);
+                    result = sk_eval(env, sk_cadr(e));
                     if(sk_is_error(result))
                         break;
+                } else {
+                    result = sk_error("bad define");
+                    break;
                 }
                 SkEnv *tgt_env = env;
-
-                if(result) rc_retain(result);
-
                 if(!strcmp(what, "define"))
                     tgt_env = get_global(tgt_env);
 
-                sk_env_put(tgt_env, varname, result);
+                sk_env_put(tgt_env, varname, rc_retain(result));
 
             } else if(!strcmp(what, "let")) {
                 if(sk_length(e) < 3 || !sk_is_list(e->cdr->car)) {
@@ -890,7 +912,7 @@ end_let:
                 e = e->cdr;
                 SkObj *body = sk_cons(sk_symbol("begin"), rc_retain(e->cdr));
 
-                result = sk_lambda(e->car ? rc_retain(e->car) : NULL, body);
+                result = sk_lambda(rc_retain(e->car), body);
 
                 if(!valid_lambda(result)) {
                     rc_release(result);
@@ -964,30 +986,40 @@ end_let:
                     break;
                 }
 
-                SkObj *f = args->car, *a = args->cdr;
+                SkObj *f = args->car, *a = args->cdr, *p;
                 if(f->type == CFUN) {
                     assert(f->func);
                     result = f->func(env, a);
                 } else if(f->type == LAMBDA) {
-                    assert(sk_is_list(f->args));
+
+                    assert(!f->args || sk_is_cons(f->args) || sk_is_symbol(f->args));
 
                     SkEnv *o = new_env;
                     new_env = sk_env_create(env);
                     rc_release(o);
 
-                    SkObj *p = f->args;
-                    for(; a && p; a = a->cdr, p = p->cdr)
-                        sk_env_put(new_env, sk_get_text(p->car), a->car ? rc_retain(a->car) : NULL);
-
-                    if((a && !p) || (p && !a))
-                        result = sk_errorf("too %s arguments passed to lambda", p ? "few" : "many");
-                    else {
-                        env = new_env;
-                        e = f->body;
-                        continue; /* TCO */
+                    for(p = f->args; p ; p = p->cdr, a = a->cdr) {
+                        if(sk_is_symbol(p)) {
+                            sk_env_put(new_env, sk_get_text(p), rc_retain(a));
+                            a = NULL;
+                            break;
+                        }
+                        if(!a) {
+                            result = sk_error("too few arguments passed to lambda");
+                            goto end;
+                        }
+                        sk_env_put(new_env, sk_get_text(p->car), rc_retain(a->car));
                     }
+                    if(a) {
+                        result = sk_error("too many arguments passed to lambda");
+                        break;
+                    }
+
+                    env = new_env;
+                    e = f->body;
+                    continue; /* TCO */
                 } else
-                    result = sk_error("attempt to call something that is not a function");
+                    result = sk_errorf("attempt to call something that is not a function");
             }
         } else {
             assert (e->type == VALUE || e->type == TRUE || e->type == FALSE ||
@@ -1123,7 +1155,7 @@ static SkObj *bif_list(SkEnv *env, SkObj *e) {
 #define TYPE_FUNCTION(cname, name, returns) static SkObj *cname(SkEnv *env, SkObj *e){return (e)?(returns):sk_error("'" name "' expects a parameter");}
 
 TYPE_FUNCTION(bif_is_list, "list?", sk_boolean(sk_is_list(e->car)))
-TYPE_FUNCTION(bif_length, "sk_length?", sk_number(sk_length(e->car)))
+TYPE_FUNCTION(bif_length, "length?", sk_number(sk_length(e->car)))
 TYPE_FUNCTION(bif_is_null, "null?", sk_boolean(sk_is_null(e->car)))
 TYPE_FUNCTION(bif_is_symbol, "symbol?", sk_boolean(sk_is_symbol(e->car)))
 TYPE_FUNCTION(bif_is_pair, "pair?", sk_boolean(sk_is_cons(e->car)))
@@ -1495,6 +1527,11 @@ SkEnv *sk_global_env() {
     /** `(fold f i L)` and `(fold-right f i L)` - Folds a list `L` using function `f` with the initial value `i` */
     TEXT_LIB(global,"(define (fold f i L) (if (null? L) i (fold f (f (car L) i) (cdr L))))");
     TEXT_LIB(global,"(define (fold-right f i L) (if (null? L) i (f (car L) (fold-right f i (cdr L)))))");
+    /** `(member? x L)` - returns `#t` if `x` is a member of the list `L` */
+    TEXT_LIB(global,"(define (member? x l) [if (null? l) #f [if (equal? x (car l)) #t (member? x (cdr l)) ]] )");
+    /** `(member x L)` - returns the members of `L` following `x` if `x` is a member of the list `L`, `#f` otherwise */
+    TEXT_LIB(global,"(define (member x l) [if (null? l) #f [if (equal? x (car l)) l (member x (cdr l)) ]] )");
+
     /** `(reverse L)` - Reverses a list `L` */
     TEXT_LIB(global,"(define (reverse l) (fold cons '() l))");
     /** `(range a b)` - Returns a list of all the integers between `a` and `b` */
@@ -1539,6 +1576,11 @@ SkEnv *sk_global_env() {
     TEXT_LIB(global,"(define (string<=? a b) (or (string<? a b) (string=? a b)))");
     TEXT_LIB(global,"(define (string>? a b) (not (string<=? a b)))");
     TEXT_LIB(global,"(define (string>=? a b) (not (string<? a b)))");
+
+    /** `(max . args)` - Returns the largest number in `args` */
+    TEXT_LIB(global,"(define (max . args) (fold (lambda (a b) (if (> a b) a b)) (car args) (cdr args)))");
+    /** `(max . args)` - Returns the smallest number in `args` */
+    TEXT_LIB(global,"(define (min . args) (fold (lambda (a b) (if (< a b) a b)) (car args) (cdr args)))");
 
     /** `(sin x)` - sine of `x` */
     sk_env_put(global, "sin", sk_cfun(bif_sin));
