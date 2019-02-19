@@ -11,6 +11,7 @@ LDFLAGS =
 SOURCES=skeem.c refcnt.c main.c
 
 EXECUTABLE=skeem
+DOCSDIR = ./doc
 DISTFILE=skeem.zip
 
 OBJECTS=$(SOURCES:.c=.o)
@@ -45,23 +46,23 @@ $(EXECUTABLE): $(OBJECTS)
 skeem.o : skeem.c skeem.h refcnt.h
 refcnt.o : refcnt.c refcnt.h
 
-docs: docsdir docs/skeem.html docs/README.html
+docs: $(DOCSDIR) $(DOCSDIR)/skeem.html $(DOCSDIR)/README.html
 
-docsdir:
-	-mkdir docs
+$(DOCSDIR):
+	-mkdir -p $(DOCSDIR)
 
-docs/skeem.html: skeem.h skeem.c d.awk
+$(DOCSDIR)/skeem.html: skeem.h skeem.c d.awk
 	$(AWK) -v Title="API Documentation" -f d.awk skeem.h skeem.c > $@
 
-docs/README.html: README.md d.awk
+$(DOCSDIR)/README.html: README.md d.awk
 	$(AWK) -f d.awk -v Clean=1 -v Title="README" $< > $@
 
-.PHONY : clean
+.PHONY : clean docsdir
 
 clean:
 	-rm -f $(EXECUTABLE) $(DISTFILE)
 	-rm -f *.o
-	-rm -rf docs
+	-rm -rf $(DOCSDIR)
 
 dist: clean
 	zip $(DISTFILE) *.c *.h Makefile Readme.md d.awk test/*.scm

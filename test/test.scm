@@ -205,6 +205,13 @@
 (display "Test 103 ...........................:" (test-equal (string-replace "Hello World" "xx" "LD") "Hello World"))
 (display "Test 103 ...........................:" (test-equal (string-replace "" "hello" "world") ""))
 
+(display "Test 105 ...........................:" (test (member? 6 '(3 4 6 7 3 2 1 8 4 3 7 6))))
+(display "Test 105 ...........................:" (test (member? 3 '(3 4 6 7 3 2 1 8 4 3 7 6))))
+(display "Test 105 ...........................:" (test-not (member? 9 '(3 4 6 7 3 2 1 8 4 3 7 6))))
+(display "Test 105 ...........................:" (test-not (member? 0 '(3 4 6 7 3 2 1 8 4 3 7 6))))
+(display "Test 105 ...........................:" (test-equal (member 1 '[3 4 6 7 3 2 1 8 4 3 7 6]) '[1 8 4 3 7 6] ))
+(display "Test 106 ...........................:" (test-equal (member 0 '[3 4 6 7 3 2 1 8 4 3 7 6]) #f ))
+
 ; Dotted pair notation
 (display "Test 104 ...........................:" (test-equal '( 1 . 2 ) (cons 1 2)))
 (display "Test 104 ...........................:" (test-equal '( 1 . ( 2 . ( 3 . ( 4 . ())))) (list 1 2 3 4)))
@@ -217,13 +224,7 @@
 (define (bar a b . c) (* (+ a b) (apply + c)))
 (display "Test 104 ...........................:" (test-equal (bar 5 5 1 2 3 4 5 6 7) 280))
 
-(display "Test 105 ...........................:" (test (member? 6 '(3 4 6 7 3 2 1 8 4 3 7 6))))
-(display "Test 105 ...........................:" (test (member? 3 '(3 4 6 7 3 2 1 8 4 3 7 6))))
-(display "Test 105 ...........................:" (test-not (member? 9 '(3 4 6 7 3 2 1 8 4 3 7 6))))
-(display "Test 105 ...........................:" (test-not (member? 0 '(3 4 6 7 3 2 1 8 4 3 7 6))))
-(display "Test 105 ...........................:" (test-equal (member 1 '[3 4 6 7 3 2 1 8 4 3 7 6]) '[1 8 4 3 7 6] ))
-(display "Test 106 ...........................:" (test-equal (member 0 '[3 4 6 7 3 2 1 8 4 3 7 6]) #f ))
-
+; min and max are also declared as variadic lambdas
 (display "Test 107 ...........................:" (test-equal (max 3 4 6 7 3 2 1 8 4 3 7 6) 8))
 (display "Test 108 ...........................:" (test-equal (min 3 4 6 7 3 2 1 8 4 3 7 6) 1))
 
