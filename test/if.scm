@@ -1,1 +1,0 @@
-(if (< 5 6) "It's true" "It is false")
