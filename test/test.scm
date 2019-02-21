@@ -16,7 +16,7 @@
 (display "Test 6 .............................:" (if (equal? 1 2) "FAIL *" "PASS"))
 
 (define (test t) (if t "PASS" "FAIL *"))
-(define (test-not t) (if (not t) "PASS" "FAIL *"))
+(define (test-not t) (test (not t)))
 (define (test-equal a b) (test (equal? a b)))
 (define (test-not-equal a b) (test-not (equal? a b)))
 
@@ -81,6 +81,28 @@
 )
 (display "Test 36 ............................:" (test-equal X 100))
 (display "Test 37 ............................:" (test-equal Y 200))
+
+; Let*
+(display "Test 38 ............................:" (test-equal X 100))
+(display "Test 39 ............................:" (test-equal Y 200))
+(let* [(X 500) (Y (+ X 100))]
+    (display "Test 40 ............................:" (test-equal X 500))
+    (display "Test 41 ............................:" (test-equal Y 600))
+    (let* [(X (+ Y 100)) (Y (+ X 1000)) (Z (+ X Y))]
+        (display "Test 42 ............................:" (test-equal X 700))
+        (display "Test 43 ............................:" (test-equal Y 1700))
+        (display "Test 44 ............................:" (test-equal Z 2400))
+    )
+    (let [(X (+ Y 100)) (Y (+ X 1000)) (Z (+ X Y))]
+        (display "Test 42 ............................:" (test-equal X 700))
+        (display "Test 43 ............................:" (test-equal Y 1500))
+        (display "Test 45 ............................:" (test-equal Z 1100))
+    )
+    (display "Test 44 ............................:" (test-equal X 500))
+    (display "Test 45 ............................:" (test-equal Y 600))
+)
+(display "Test 46 ............................:" (test-equal X 100))
+(display "Test 47 ............................:" (test-equal Y 200))
 
 (display "Test 38 ............................:" (test (number? '1)))
 (display "Test 38 ............................:" (test (number? '+1)))

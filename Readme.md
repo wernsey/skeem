@@ -78,7 +78,7 @@ Articles/links that might come in useful in the future
 * [x] The way `VALUE`s are written in `sk_serialize()` should escape special characters.
   * You can use the new `buffer_appendn()` function with a `s` as a `char[2]` and `len = 1`
 * Special forms:
-  * [ ] `let*` - see [here](http://www.cs.utexas.edu/ftp/garbage/cs345/schintro-v13/schintro_59.html)
+  * [x] `let*` - see [here](http://www.cs.utexas.edu/ftp/garbage/cs345/schintro-v13/schintro_59.html)
   * [ ] `cond` special form
 * String functions. I've been looking at [Racket's](https://docs.racket-lang.org/reference/strings.html),
   but I'm not going to do mutable strings:
@@ -115,6 +115,7 @@ Articles/links that might come in useful in the future
   * [x] It now supports the `(define x (lambda args (display args)))` syntax.
   * [x] If I ever implement the `(x . y)` syntax, the `(arg1 arg2 . rest)` syntax should also be doable.
 * [x] Implement [dotted pairs](https://ds26gte.github.io/tyscheme/index-Z-H-4.html#node_sec_2.2.3)
+* [ ] What is the normal Scheme hash table structure? Maybe I can repurpose the `Env` objects for it.
 
 Here is the Awk script to renumber the tests in test/test.scm
 

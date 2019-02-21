@@ -816,7 +816,7 @@ SkObj *sk_eval(SkEnv *env, SkObj *e) {
             result = NULL;
         }
         if(!e)
-            result = NULL;
+            goto end;
         else if(e->type == SYMBOL) {
             SkObj *r = sk_env_get(env, sk_get_text(e));
             result = sk_is_error(r) ? r : rc_retain(r); /* don't retain errors */
@@ -824,12 +824,12 @@ SkObj *sk_eval(SkEnv *env, SkObj *e) {
             const char *what = sk_get_text(e->car);
             if(!sk_is_list(e)) {
                 result = sk_errorf("bad %s", what[0] ? what : "list");
-                break;
+                goto end;
             }
             if(!strcmp(what, "define") || !strcmp(what, "set!")) {
                 if(sk_length(e) != 3) {
-                    result = sk_errorf("bad %s", what);
-                    break;
+                    result = sk_errorf("%s needs 2 parameters", what);
+                    goto end;
                 }
                 e = e->cdr;
 
@@ -839,7 +839,7 @@ SkObj *sk_eval(SkEnv *env, SkObj *e) {
                     SkObj *f = e->car;
                     if(!sk_is_symbol(f->car)) {
                         result = sk_error("define lambda needs function name");
-                        break;
+                        goto end;
                     }
                     varname = sk_get_text(f->car);
 
@@ -848,17 +848,17 @@ SkObj *sk_eval(SkEnv *env, SkObj *e) {
                     if(!valid_lambda(result)) {
                         rc_release(result);
                         result = sk_error("invalid lambda define");
-                        break;
+                        goto end;
                     }
                 } else if(sk_is_symbol(e->car)) {
                     /* `(define v expr)` form */
                     varname = sk_get_text(e->car);
                     result = sk_eval(env, sk_cadr(e));
                     if(sk_is_error(result))
-                        break;
+                        goto end;
                 } else {
                     result = sk_error("bad define");
-                    break;
+                    goto end;
                 }
                 SkEnv *tgt_env = env;
                 if(!strcmp(what, "define"))
@@ -866,10 +866,10 @@ SkObj *sk_eval(SkEnv *env, SkObj *e) {
 
                 sk_env_put(tgt_env, varname, rc_retain(result));
 
-            } else if(!strcmp(what, "let")) {
+            } else if(!strcmp(what, "let") || !strcmp(what, "let*")) {
                 if(sk_length(e) < 3 || !sk_is_list(e->cdr->car)) {
                     result = sk_error("bad let");
-                    break;
+                    goto end;
                 }
                 SkObj *a = e->cdr->car, *b = e->cdr->cdr;
 
@@ -880,14 +880,19 @@ SkObj *sk_eval(SkEnv *env, SkObj *e) {
                 for(; a; a = a->cdr) {
                     if(!sk_is_list(a->car) || sk_length(a->car) != 2
                         || !sk_is_symbol(a->car->car)) {
-                        result = sk_error("bad clause in 'let'");
+                        result = sk_errorf("bad clause in '%s'", what);
                         goto end_let;
                     }
                     const char *name = sk_get_text(a->car->car);
-                    SkObj *v = sk_eval(env, a->car->cdr->car);
+                    SkObj *v = sk_eval(new_env->parent, a->car->cdr->car);
                     if(sk_is_error(v) && (result = v))
                         goto end_let;
                     sk_env_put(new_env, name, v);
+
+                    if(what[3] == '*') {
+                        new_env = sk_env_create(new_env);
+                        rc_release(new_env->parent);
+                    }
                 }
                 for(; b && b->cdr; b = b->cdr) {
                     rc_release(result);
@@ -907,27 +912,26 @@ end_let:
             } else if(!strcmp(what, "lambda")) {
                 if(sk_length(e) < 3) {
                     result = sk_error("bad lambda");
-                    break;
+                    goto end;
                 }
                 e = e->cdr;
                 SkObj *body = sk_cons(sk_symbol("begin"), rc_retain(e->cdr));
 
                 result = sk_lambda(rc_retain(e->car), body);
-
                 if(!valid_lambda(result)) {
                     rc_release(result);
                     result = sk_error("invalid lambda");
-                    break;
+                    goto end;
                 }
             } else if(!strcmp(what, "if")) {
                 if(sk_length(e) != 4) {
                     result = sk_error("bad if");
-                    break;
+                    goto end;
                 }
                 e = e->cdr;
                 SkObj *cond = sk_eval(env, e->car);
                 if(sk_is_error(cond) && (result = cond))
-                    break;
+                    goto end;
 
                 if(sk_is_true(cond))
                     e = e->cdr;
@@ -981,9 +985,8 @@ end_let:
                 args = bind_args(env, e);
                 assert(args);
                 if(sk_is_error(args)) {
-                    result = args;
-                    args = NULL;
-                    break;
+                    result = rc_retain(args);
+                    goto end;
                 }
 
                 SkObj *f = args->car, *a = args->cdr, *p;
@@ -999,9 +1002,8 @@ end_let:
                     rc_release(o);
 
                     for(p = f->args; p ; p = p->cdr, a = a->cdr) {
-                        if(sk_is_symbol(p)) {
+                        if(sk_is_symbol(p)) { /* varargs */
                             sk_env_put(new_env, sk_get_text(p), rc_retain(a));
-                            a = NULL;
                             break;
                         }
                         if(!a) {
@@ -1010,9 +1012,9 @@ end_let:
                         }
                         sk_env_put(new_env, sk_get_text(p->car), rc_retain(a->car));
                     }
-                    if(a) {
+                    if(!p && a) {
                         result = sk_error("too many arguments passed to lambda");
-                        break;
+                        goto end;
                     }
 
                     env = new_env;
