@@ -441,9 +441,22 @@ const char *sk_get_text(SkObj *e);
 SkEnv *sk_global_env();
 
 /**
+ * #### `SkEnv *sk_env_createn(SkEnv *parent, unsigned int size);`
+ *
+ * Creates a new environment, with an internal hash table with `size` slots
+ * and its `parent` set as its parent environment.
+ *
+ * `size` _must_ be a power of 2 because `size-1` is used as a bitmask internally
+ */
+SkEnv *sk_env_createn(SkEnv *parent, unsigned int size);
+
+/**
  * #### `SkEnv *sk_env_create(SkEnv *parent);`
  *
  * Creates a new environment, with `parent` set as its parent environment.
+ *
+ * The internal hash table has a small number of slots meant for local
+ * variables and function parameters.
  */
 SkEnv *sk_env_create(SkEnv *parent);
 

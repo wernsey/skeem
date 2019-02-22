@@ -102,11 +102,11 @@ Articles/links that might come in useful in the future
   API function `sk_value_o(buf)` that takes ownership of the parameter `buf` passed to it.
   It would work like `sk_value(buf)`, but replaces the `strdup()` with a normal assignment.
   This would allow you to remove the `free()` from `bif_string_append()`.
-* [ ] The hash-tables in the environments need a variable capacity. The global environment needs a bit more
+* [x] The hash-tables in the environments need a variable capacity. The global environment needs a bit more
   slots than the current 32, while 32 slots seems like overkill for a typical lambda.
 * Skeem can't have a proper `call/cc` for the same reasons it can't have closures (hint: reference counting).  \
   It might be possible to a _escaping continuation_ version of `call/cc` similar to how [lispy2][] does it.  \
-  It would however require the addition of a new type of value that needs to be checked for in `sk_eval()` 
+  It would however require the addition of a new type of value that needs to be checked for in `sk_eval()`
   every time `sk_eval()` calls itself recursively.  \
   The implementation of `call/cc` would need some way to identify itself if you were to have nested `call/cc`s.
   I think using the value of the `SkObj *` pointer passed to the `call_cc` CFun will be sufficient.  \
@@ -115,14 +115,26 @@ Articles/links that might come in useful in the future
   * [x] It now supports the `(define x (lambda args (display args)))` syntax.
   * [x] If I ever implement the `(x . y)` syntax, the `(arg1 arg2 . rest)` syntax should also be doable.
 * [x] Implement [dotted pairs](https://ds26gte.github.io/tyscheme/index-Z-H-4.html#node_sec_2.2.3)
-* [ ] What is the normal Scheme hash table structure? Maybe I can repurpose the `Env` objects for it.
+* [ ] Maybe I can repurpose the `SkEnv` objects for implementing hash tables similar to
+  [Racket's hash tables][hashtables].
+  * I don't think it is necessary to use anything other than strings as keys (so `SYMBOL`s or `VALUE`s),
+    so I only need a `(make-hash)` function.
+  * I'll make an exception wrt the immutability of Skeem objects just this one time.
+    * So no need for `(make-immutable-hash)`
+  * [ ] You might even be able to do the `(hash-set)` function by using the `SkEnv`'s parent.
+  * [ ] Serialization should lead to something like `(hash "apple" 'red "banana" 'yellow)`.
+    * You don't need to go so far as the ` #hash` form.
+  * To implement a function like `(hash-map)` you'll need to be able to iterate through the
+    hash table. Here's how my [old hash table does it](https://github.com/wernsey/miscsrc/blob/master/hash.c#L177)
+  * See also Racket's [hash table reference][hashref]
 
 Here is the Awk script to renumber the tests in test/test.scm
 
     awk '{if($0 ~ /Test [0-9]+/)gsub(/Test [0-9]+/,"Test " (++i));print}' test/test.scm
 
-
 [callcc]: https://ds26gte.github.io/tyscheme/index-Z-H-15.html#node_chap_13
+[hashtables]: https://docs.racket-lang.org/guide/hash-tables.html
+[hashref]: https://docs.racket-lang.org/reference/hashtables.html
 
 ### Bugs
 
@@ -130,7 +142,7 @@ Here is the Awk script to renumber the tests in test/test.scm
 
 ### Numbers
 
-All values are stored as strings internally. 
+All values are stored as strings internally.
 This means that (a) precision is negatively affected, and (b) numeric performance is bad because a value needs to
 be converted to a double (through `atof()`) if it is used as a number, and then converted back into a string
 (through `snprintf()`) when it is stored.

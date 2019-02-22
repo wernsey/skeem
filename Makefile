@@ -65,4 +65,4 @@ clean:
 	-rm -rf $(DOCSDIR)
 
 dist: clean
-	zip $(DISTFILE) *.c *.h Makefile Readme.md d.awk test/*.scm
+	zip $(DISTFILE) *.c *.h Makefile *.md d.awk test/*.scm

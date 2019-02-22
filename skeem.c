@@ -18,6 +18,10 @@
 #  define MEMCHECK(p) assert(p)
 #endif
 
+/* I'm working from the assumtion that most funtions won't have lots of
+   paramters or loval variables */
+#define DEFAULT_HASH_SIZE   8
+
 /* Anonymous structs and unions are not part of the C standard, but they are
 so useful that I can't get myself to remove them */
 typedef struct SkObj {
@@ -68,14 +72,16 @@ static void env_dtor(SkEnv *env) {
     rc_release(env->parent);
 }
 
-SkEnv *sk_env_create(SkEnv *parent) {
+SkEnv *sk_env_createn(SkEnv *parent, unsigned int size) {
     SkEnv *env = rc_alloc(sizeof *env);
-    unsigned int size = 32; /* size *must* be a power of 2 */
     env->mask = size-1;
     env->table = calloc(size, sizeof *env->table);
     env->parent = rc_retain(parent);
     rc_set_dtor(env, (ref_dtor)env_dtor);
     return env;
+}
+SkEnv *sk_env_create(SkEnv *parent) {
+    return sk_env_createn(parent, DEFAULT_HASH_SIZE);
 }
 
 static unsigned int hash(const char *s) {
@@ -115,14 +121,14 @@ static hash_element *env_findg_r(SkEnv *env, const char *name, unsigned int h) {
     hash_element *v;
     if(!env)
         return NULL;
-    for(v = env->table[h]; v; v = v->next)
+    for(v = env->table[h & env->mask]; v; v = v->next)
         if(!strcmp(v->name, name))
             return v;
     return env_findg_r(env->parent, name, h);
 }
 
 SkObj *sk_env_get(SkEnv *env, const char *name) {
-    unsigned int h = hash(name) & env->mask;
+    unsigned int h = hash(name);
     hash_element* v = env_findg_r(env, name, h);
     if(v)
         return v->ex;
@@ -1449,7 +1455,7 @@ static SkObj *bif_pow(SkEnv *env, SkObj *e) {
 
 /** ## Built-in Functions */
 SkEnv *sk_global_env() {
-    SkEnv *global = sk_env_create(NULL);
+    SkEnv *global = sk_env_createn(NULL, 512);
 
     /** `(serialize val)` - Serializes a value into a string */
     sk_env_put(global, "serialize", sk_cfun(bif_serialize));
