@@ -123,7 +123,7 @@ static void exit_fun() {
         /* a = Allocated objects, d = deallocated objects, g = uncollected garbage */
         printf("\n** Reference counter report **\n");
         printf("** Ref Counts..: a:%d d:%d g:%d\n", rc_alloc_count, rc_free_count, rc_alloc_count - rc_free_count);
-        printf("** Mem Usage...: max:%u cur:%u\n", max_alloced, alloced);
+        printf("** Mem Usage...: max:%zu cur:%zu\n", max_alloced, alloced);
         for (r = rc_root; r; r = r->next) {
             HistoryList *it;
 			

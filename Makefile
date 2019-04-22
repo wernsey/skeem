@@ -5,7 +5,7 @@ AWK=awk
 BUILD=debug
 
 CFLAGS = -c -Wall
-LDFLAGS =
+LDFLAGS = -lm
 
 # Add your source files here:
 SOURCES=skeem.c refcnt.c main.c
@@ -46,7 +46,7 @@ $(EXECUTABLE): $(OBJECTS)
 skeem.o : skeem.c skeem.h refcnt.h
 refcnt.o : refcnt.c refcnt.h
 
-docs: $(DOCSDIR) $(DOCSDIR)/skeem.html $(DOCSDIR)/README.html
+docs: $(DOCSDIR) $(DOCSDIR)/skeem.html $(DOCSDIR)/Readme.html
 
 $(DOCSDIR):
 	-mkdir -p $(DOCSDIR)
@@ -54,7 +54,7 @@ $(DOCSDIR):
 $(DOCSDIR)/skeem.html: skeem.h skeem.c d.awk
 	$(AWK) -v Title="API Documentation" -f d.awk skeem.h skeem.c > $@
 
-$(DOCSDIR)/README.html: README.md d.awk
+$(DOCSDIR)/Readme.html: Readme.md d.awk
 	$(AWK) -f d.awk -v Clean=1 -v Title="README" $< > $@
 
 .PHONY : clean docsdir
