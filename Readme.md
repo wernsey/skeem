@@ -6,7 +6,7 @@ with [reference counting][refcnt] for memory management.
 It has a simplified C API so that it can be embedded into other programs
 to allow you to apply [Greenspun's tenth rule][greenspun] with ease.
 
-Skeem is licensed under the terms of the MIT license. See the [LICENSE](LICENSE) 
+Skeem is licensed under the terms of the MIT license. See the [LICENSE](LICENSE)
 for details.
 
 It is based mostly on Peter Norvig's [lispy][] interpreter with some
@@ -93,9 +93,3 @@ A mark-and-sweep (MS) garbage collector was considered, but RC was ultimately ch
 The biggest drawback of RC is that the interpreter can't have closures. Closures require lambdas to have a
 references to the environments in which they were created, which will ultimately, probably, have a reference to the
 lamba itself, leading to circular references which the RC can't deal with, and therefore memory leaks.
-
-### Hash tables
-
-Skeem uses the DJB hash, which is [a bit controversial](http://dmytry.blogspot.com/2009/11/horrible-hashes.html).
-It uses [the XOR variant](http://www.cse.yorku.ca/~oz/hash.html), but was chosen for its simplicity.
-[This StackOverflow answer](https://stackoverflow.com/a/13809282/115589) explains the constants in DJB.

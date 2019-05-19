@@ -1,6 +1,6 @@
 # Notes
 
-### TODOs
+## TODOs
 
 * [x] Escape sequences in string literals!
 * [x] The way `VALUE`s are written in `sk_serialize()` should escape special characters.
@@ -18,8 +18,8 @@
     * [x] `(string-downcase str)`
     * [x] `(string-replace str from to [all=#t])`
         * You need the `filter` in this line `(define x (filter (lambda (s) (> (string-length? s) 0)) (string-split (readfile 'test2.txt) "\r\n")))`
-      because the DOS `\r` characters really breaks them when we don't have a `string-replace` function.  
-	  Fixed: You can now do `(define x (string-split (string-replace (readfile 'test2.txt) "\r" "") "\n"))`
+      because the DOS `\r` characters really breaks them when we don't have a `string-replace` function.
+      Fixed: You can now do `(define x (string-split (string-replace (readfile 'test2.txt) "\r" "") "\n"))`
     * [x] `(string-split str [sep=' '])`
     * [x] `(string-trim str)`
     * [x] `(string-contains? s what)`, `(string-prefix? s what)` and `(string-suffix? s what)`
@@ -32,12 +32,12 @@
   This would allow you to remove the `free()` from `bif_string_append()`.
 * [x] The hash-tables in the environments need a variable capacity. The global environment needs a bit more
   slots than the current 32, while 32 slots seems like overkill for a typical lambda.
-* [ ] Skeem can't have a proper `call/cc` for the same reasons it can't have closures (hint: reference counting).  
-  It might be possible to a _escaping continuation_ version of `call/cc` similar to how [lispy2][] does it.  
+* [ ] Skeem can't have a proper `call/cc` for the same reasons it can't have closures (hint: reference counting).
+  It might be possible to a _escaping continuation_ version of `call/cc` similar to how [lispy2][] does it.
   It would however require the addition of a new type of value that needs to be checked for in `sk_eval()`
-  every time `sk_eval()` calls itself recursively.  
-  The implementation of `call/cc` would need some way to identify itself if you were to have nested `call/cc`s.  
-  I think using the value of the `SkObj *` pointer passed to the `call_cc` CFun will be sufficient.  
+  every time `sk_eval()` calls itself recursively.
+  The implementation of `call/cc` would need some way to identify itself if you were to have nested `call/cc`s.
+  I think using the value of the `SkObj *` pointer passed to the `call_cc` CFun will be sufficient.
   Here's [another link][callcc]
 * [x] **(6) Procedures with arbitrary number of arguments** from [lispy2][] shouldn't be too difficult to implement.
     * [x] It now supports the `(define x (lambda args (display args)))` syntax.
@@ -65,7 +65,54 @@ Here is the Awk script to renumber the tests in test/test.scm
 [hashref]: https://docs.racket-lang.org/reference/hashtables.html
 [lispy2]: http://norvig.com/lispy2.html
 
-### Hash Tables
+## Debugging the Reference Counter
+
+Older versions of Skeem used a separate reference counter that has functionality
+to check for unreleased references when the interpreter terminates if it was
+compiled in debug mode (`NDEBUG` not defined).
+
+I removed this functionality because I want Skeem to be self contained and
+not require the separate `refcnt.c` and `refcnt.h`.
+
+I just want to keep these snippets around for reference. In the header:
+
+```
+#ifdef NDEBUG
+SkObj *sk_symbol(const char *sk_value);
+#else
+#  define sk_symbol(v) sk_symbol_(v, __FILE__, __LINE__)
+SkObj *sk_symbol_(const char *sk_value, const char *file, int line);
+#endif
+```
+
+Then where the function is declared in the source file:
+
+```
+#ifdef NDEBUG
+SkObj *sk_symbol(const char *sk_value) {
+    SkObj *e = rc_alloc(sizeof *e);
+#else
+SkObj *sk_symbol_(const char *sk_value, const char *file, int line) {
+    SkObj *e = rc_alloc_(sizeof *e, file, line);
+#endif
+    MEMCHECK(e);
+    rc_set_dtor(e, (ref_dtor)SkExpr_dtor);
+    e->type = SYMBOL;
+    e->value = strdup(sk_value);
+    return e;
+}
+```
+
+This allows you to see where a particular call of `sk_symbol()` allocated an object
+that wasn't released.
+
+## Hash Tables
+
+Skeem uses the DJB hash, which is [a bit controversial](http://dmytry.blogspot.com/2009/11/horrible-hashes.html).
+It uses [the XOR variant](http://www.cse.yorku.ca/~oz/hash.html), but was chosen for its simplicity.
+[This StackOverflow answer](https://stackoverflow.com/a/13809282/115589) explains the constants in DJB.
+
+I have a TODO to add hash tables to the language similar to Racket's `(make-hash)` function
 
 Functions I meant to use to iterate through hash tables...
 
@@ -109,10 +156,10 @@ const char *sk_env_next(SkEnv *env, const char *name) {
         }
     }
     return NULL;
-    
+
     // cant do this: What if the key is in the child _and_ the parent?
     // Althrough I really want to:
-    //return sk_env_next(env->parent, name); 
+    //return sk_env_next(env->parent, name);
 }
 ```
 

@@ -4,7 +4,6 @@
 #include <errno.h>
 #include <assert.h>
 
-#include "refcnt.h"
 #include "skeem.h"
 
 static char *readfile(const char *fname);
@@ -14,8 +13,6 @@ static void add_io_functions(SkEnv *global);
 int main(int argc, char *argv[]) {
 
     int rv = 0;
-
-    rc_init();
 
     SkEnv *global = sk_global_env();
 
@@ -78,7 +75,7 @@ static char *readfile(const char *fname) {
     len = ftell(f);
     rewind(f);
 
-    if(!(str = malloc(len+2)))
+    if(!(str = malloc(len+1)))
         return NULL;
     r = fread(str, 1, len, f);
 

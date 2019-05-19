@@ -21,6 +21,13 @@
  * [greenspun]: https://en.wikipedia.org/wiki/Greenspun%27s_tenth_rule
  */
 
+#ifndef SKEEM_H
+#define SKEEM_H
+#if defined(__cplusplus) || defined(c_plusplus)
+extern "C"
+{
+#endif
+
 /**
  * ## Expression objects
  *
@@ -36,6 +43,8 @@ typedef struct SkObj SkObj;
 struct SkEnv;
 typedef struct SkEnv SkEnv;
 
+typedef void (*ref_dtor_t)(void *);
+
 /**
  * ### Cons cells
  *
@@ -45,12 +54,7 @@ typedef struct SkEnv SkEnv;
  *
  * [cons]: https://en.wikipedia.org/wiki/Cons
  */
-#ifdef NDEBUG
 SkObj *sk_cons(SkObj *sk_car, SkObj *sk_cdr);
-#else
-#  define sk_cons(sk_car, sk_cdr) sk_cons_(sk_car, sk_cdr, __FILE__, __LINE__)
-SkObj *sk_cons_(SkObj *sk_car, SkObj *sk_cdr, const char *file, int line);
-#endif
 
 /**
  * #### `int sk_is_null(SkObj *e);`
@@ -111,12 +115,7 @@ int sk_length(SkObj *e);
  *
  * Creates a new symbol object with the given string value.
  */
-#ifdef NDEBUG
 SkObj *sk_symbol(const char *sk_value);
-#else
-#  define sk_symbol(v) sk_symbol_(v, __FILE__, __LINE__)
-SkObj *sk_symbol_(const char *sk_value, const char *file, int line);
-#endif
 
 /**
  * #### `int sk_is_symbol(SkObj *e);`
@@ -132,12 +131,8 @@ int sk_is_symbol(SkObj *e);
  *
  * Creates a new value object with the given string value.
  */
-#ifdef NDEBUG
 SkObj *sk_value(const char *val);
-#else
-#  define sk_value(v) sk_value_(v, __FILE__, __LINE__)
-SkObj *sk_value_(const char *val, const char *file, int line);
-#endif
+
 /*
  * #### `SkObj *sk_value_o(const char *val);`
  *
@@ -147,12 +142,7 @@ SkObj *sk_value_(const char *val, const char *file, int line);
  * The interpreter will take responsibility for `free()`ing
  * the memory at some point.
  */
-#ifdef NDEBUG
 SkObj *sk_value_o(char *val);
-#else
-#  define sk_value_o(v) sk_value_o_(v, __FILE__, __LINE__)
-SkObj *sk_value_o_(char *val, const char *file, int line);
-#endif
 
 /**
  * #### `int sk_is_value(SkObj *e);`
@@ -168,12 +158,7 @@ int sk_is_value(SkObj *e);
  *
  * Skeem stores numbers as strings internallyy for technical reasons.
  */
-#ifdef NDEBUG
 SkObj *sk_number(double n);
-#else
-#  define sk_number(v) sk_number_(v, __FILE__, __LINE__)
-SkObj *sk_number_(double n, const char *file, int line);
-#endif
 
 /**
  * #### `int sk_is_number(SkObj *e);`
@@ -190,12 +175,7 @@ int sk_is_number(SkObj *e);
  * Creates a new boolean object with the given value `val` that is either
  * `#t` for non-zero and `#f` for zero.
  */
-#ifdef NDEBUG
 SkObj *sk_boolean(int val);
-#else
-#  define sk_boolean(v) sk_boolean_(v, __FILE__, __LINE__)
-SkObj *sk_boolean_(int val, const char *file, int line);
-#endif
 
 /**
  * #### `int sk_is_boolean(SkObj *e);`
@@ -230,17 +210,12 @@ int sk_is_true(SkObj *e);
  * Creates a new object of type Lambda with pointers to the list of
  * arguments and the body of the lambda.
  */
-#ifdef NDEBUG
 SkObj *sk_lambda(SkObj *args, SkObj *body);
-#else
-#  define sk_lambda(args, body) sk_lambda_(args, body, __FILE__, __LINE__)
-SkObj *sk_lambda_(SkObj *args, SkObj *body, const char *file, int line);
-#endif
 
 /**
- * #### `typedef SkObj *(*sk_cfun)(SkEnv *env, SkObj *args);`
+ * #### `typedef SkObj *(*sk_cfun_t)(SkEnv *env, SkObj *args);`
  *
- * A `sk_cfun` is a pointer to a C function that can be called from
+ * A `sk_cfun_t` is a pointer to a C function that can be called from
  * the Skeem interpreter.
  *
  * The `env` parameter passed to the function is the current execution
@@ -252,19 +227,14 @@ SkObj *sk_lambda_(SkObj *args, SkObj *body, const char *file, int line);
  * The function should return a _retained_ `SkObj` object that is
  * to be used as the return value of the function.
  */
-typedef SkObj *(*sk_cfun)(struct SkEnv *env, SkObj *args);
+typedef SkObj *(*sk_cfun_t)(struct SkEnv *env, SkObj *args);
 
 /**
  * #### `SkObj *sk_cfun(sk_cfun fun);`
  *
- * Creates a new object of type CFun with a pointer to the `sk_cfun` C function.
+ * Creates a new object of type CFun with a pointer to the `sk_cfun_t` C function.
  */
-#ifdef NDEBUG
-SkObj *sk_cfun(sk_cfun func);
-#else
-#  define sk_cfun(f) sk_cfun_(f, __FILE__, __LINE__)
-SkObj *sk_cfun_(sk_cfun func, const char *file, int line);
-#endif
+SkObj *sk_cfun(sk_cfun_t func);
 
 /**
  * #### `int sk_is_procedure(SkObj *e);`
@@ -285,7 +255,7 @@ int sk_is_procedure(SkObj *e);
  * CData objects always evaluates to `#t` when used in boolean expressions,
  * and evaluates to `""` and 0 when used as strings and numbers.
  *
- * #### `SkObj *sk_cdata(void *cdata, ref_dtor dtor);`
+ * #### `SkObj *sk_cdata(void *cdata, ref_dtor_t dtor);`
  *
  * Creates a new object of type CData with a pointer to the data. The pointer
  * can later be retrieved through `sk_get_cdata()`
@@ -294,12 +264,7 @@ int sk_is_procedure(SkObj *e);
  * the reference counter to clean up after the object when all references
  * have been removed.
  */
-#ifdef NDEBUG
-SkObj *sk_cdata(void *cdata, ref_dtor dtor);
-#else
-#  define sk_cdata(c,d) sk_cdata_(c,d, __FILE__, __LINE__)
-SkObj *sk_cdata_(void *cdata, ref_dtor dtor, const char *file, int line);
-#endif
+SkObj *sk_cdata(void *cdata, ref_dtor_t dtor);
 
 /**
  * #### `int sk_is_cdata(SkObj *e);`
@@ -316,14 +281,14 @@ int sk_is_cdata(SkObj *e);
 void *sk_get_cdata(SkObj *e);
 
 /**
- * #### `ref_dtor sk_get_cdtor(SkObj *e)`
+ * #### `ref_dtor_t sk_get_cdtor(SkObj *e)`
  *
  * Gets the destructor of the CData object. This can be useful for
  * checking whether a CData object is of a specific type.
  *
  * Returns `NULL` if none or if `e` is not a CData object.
  */
-ref_dtor sk_get_cdtor(SkObj *e);
+ref_dtor_t sk_get_cdtor(SkObj *e);
 
 /**
  * ### Error objects
@@ -338,12 +303,7 @@ ref_dtor sk_get_cdtor(SkObj *e);
  *
  * Creates a new error object with the error message `msg`.
  */
-#ifdef NDEBUG
 SkObj *sk_error(const char *msg);
-#else
-#  define sk_error(v) sk_error_(v, __FILE__, __LINE__)
-SkObj *sk_error_(const char *msg, const char *file, int line);
-#endif
 
 /**
  * #### `SkObj *sk_errorf(const char *fmt, ...)`
@@ -543,3 +503,48 @@ SkObj *sk_eval_str(SkEnv *global, const char *text);
  * hold.
  */
 SkObj *sk_apply(SkEnv *env, SkObj *f, SkObj *a);
+
+/**
+ * ### Reference counter
+ *
+ * #### `typedef void (*ref_dtor_t)(void *);`
+ *
+ * The destructor for a reference counted object. It is called on
+ * an object when all its references have been released. Its purpose
+ * is to free up any resources used by an object, including releasing
+ * any references to other objects that this one may hold.
+ *
+ * #### `void *rc_alloc(size_t size);`
+ *
+ * Allocates a reference counted block of memort
+ */
+void *rc_alloc(size_t size);
+
+/**
+ * #### `void rc_release(void *p);`
+ *
+ * Releases a reference to a reference counted block of memory.
+ * If the reference count drops to zero, the dtor is called and
+ * the memory is freed.
+ */
+void rc_release(void *p);
+
+/**
+ * #### `void *rc_retain(void *p);`
+ *
+ * Retains a pointer to a reference counted block (by incrementing
+ * the object's reference count).
+ */
+void *rc_retain(void *p);
+
+/**
+ * #### `void rc_set_dtor(void *p, ref_dtor_t dtor);`
+ *
+ * Sets the destructor of a reference counted object.
+ */
+void rc_set_dtor(void *p, ref_dtor_t dtor);
+
+#if defined(__cplusplus) || defined(c_plusplus)
+} /* extern "C" */
+#endif
+#endif /* ifdef SKEEM_H */

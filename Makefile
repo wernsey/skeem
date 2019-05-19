@@ -8,7 +8,7 @@ CFLAGS = -c -Wall
 LDFLAGS = -lm
 
 # Add your source files here:
-SOURCES=skeem.c refcnt.c main.c
+SOURCES=skeem.c main.c
 
 EXECUTABLE=skeem
 DOCSDIR = ./doc
@@ -43,8 +43,7 @@ $(EXECUTABLE): $(OBJECTS)
 	$(CC) $(CFLAGS) $< -o $@
 
 # Add header dependencies here
-skeem.o : skeem.c skeem.h refcnt.h
-refcnt.o : refcnt.c refcnt.h
+skeem.o : skeem.c skeem.h
 
 docs: $(DOCSDIR) $(DOCSDIR)/skeem.html $(DOCSDIR)/Readme.html
 

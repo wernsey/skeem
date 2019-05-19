@@ -1,5 +1,5 @@
 /*
- * Reference counter for C. 
+ * Reference counter for C.
  *
  * It works by allocating a hidden header before each object
  * containing the reference count.
@@ -14,8 +14,8 @@
  *
  * In _debug_ mode (if `NDEBUG` is not defined) the objects are
  * added and removed from a linked list as they are allocated
- * and deallocated. Each object also tracks where it was 
- * allocated, retained and released using some `__FILE__` and 
+ * and deallocated. Each object also tracks where it was
+ * allocated, retained and released using some `__FILE__` and
  * `__LINE__` trickery, and will print a report to
  * `stdout` of objects that are still allocated when the program
  * terminates in order to troubleshoot memory leaks.
@@ -106,7 +106,7 @@ static void add_list_item(RefObj *r, const char *file, int line, const char *des
 }
 
 static void free_list(HistoryList *hl) {
-    if(hl->next) 
+    if(hl->next)
         free_list(hl->next);
     free(hl);
 }
@@ -126,18 +126,18 @@ static void exit_fun() {
         printf("** Mem Usage...: max:%lu cur:%lu\n", (unsigned long)max_alloced, (unsigned long)alloced);
         for (r = rc_root; r; r = r->next) {
             HistoryList *it;
-			
+
 #ifdef DEBUG_DOUBLE_DEALLOC
-			if(r->refcnt != 0) {
-				if(r->is_str) {
-					printf("** - String '%s' with %d references\n", (char*)r + sizeof *r, r->refcnt);
-				} else {
-					printf("** - Object %p with %d references\n", (char*)r + sizeof *r, r->refcnt);
-				}
-				for(it = r->list; it; it = it->next) {
-					printf("      - %s @ %s:%d\n", it->desc, it->file, it->line);
-				}
-			}
+            if(r->refcnt != 0) {
+                if(r->is_str) {
+                    printf("** - String '%s' with %d references\n", (char*)r + sizeof *r, r->refcnt);
+                } else {
+                    printf("** - Object %p with %d references\n", (char*)r + sizeof *r, r->refcnt);
+                }
+                for(it = r->list; it; it = it->next) {
+                    printf("      - %s @ %s:%d\n", it->desc, it->file, it->line);
+                }
+            }
 #else
             if(r->is_str) {
                 printf("** - String '%s' with %u references\n", (char*)r + sizeof *r, r->refcnt);
@@ -147,7 +147,7 @@ static void exit_fun() {
             for(it = r->list; it; it = it->next) {
                 printf("      - %s @ %s:%d\n", it->desc, it->file, it->line);
             }
-#endif			
+#endif
         }
     }
 }
@@ -164,22 +164,22 @@ void *rc_alloc(size_t size) {
 #else
 void *rc_alloc_(size_t size, const char *file, int line) {
 #endif
-    void *data;    
+    void *data;
 
-#ifndef NDEBUG    
+#ifndef NDEBUG
     RefObj *r = malloc((sizeof *r) + size + sizeof(int));
 #else
     RefObj *r = malloc((sizeof *r) + size);
 #endif
-    if(!r) 
+    if(!r)
         return NULL;
     data = (char*)r + sizeof *r;
     r->refcnt = 1;
     r->dtor = NULL;
 #ifndef NDEBUG
-    
+
     *(int *)((char *)data + size) = SENTINEL;
-    
+
     r->is_str = 0;
     r->list = NULL;
     r->size = size;
@@ -190,9 +190,9 @@ void *rc_alloc_(size_t size, const char *file, int line) {
     r->next = rc_root;
     rc_root = r;
     if(r->next) r->next->prev = r;
-    r->prev = NULL; 
+    r->prev = NULL;
     rc_alloc_count++;
-#endif  
+#endif
     return data;
 }
 
@@ -202,18 +202,18 @@ void *rc_realloc(void *p, size_t size) {
 void *rc_realloc_(void *p, size_t size, const char *file, int line) {
 #endif
     RefObj *r;
-    if(!p) 
+    if(!p)
         return NULL;
     r = (RefObj *)((char *)p - sizeof *r);
     assert(r->refcnt == 1);
-#ifdef NDEBUG       
+#ifdef NDEBUG
     r = realloc(r, (sizeof *r) + size);
 #else
     r = realloc(r, (sizeof *r) + size + sizeof(int));
     char *data = (char*)r + sizeof *r;
     *(int *)((char *)data + size) = SENTINEL;
 
-    alloced = alloced - r->size + size;    
+    alloced = alloced - r->size + size;
     if(alloced > max_alloced)
         max_alloced = alloced;
     r->size = size;
@@ -236,7 +236,7 @@ void *rc_strdup_(const char *s, const char *file, int line) {
 #endif
     size_t len = strlen(s);
     char *n = rc_alloc(len + 1);
-    if(!n) 
+    if(!n)
         return NULL;
     memcpy(n, s, len + 1);
 #ifndef NDEBUG
@@ -246,7 +246,7 @@ void *rc_strdup_(const char *s, const char *file, int line) {
     r->list->line = line;
     r->list->desc = "rc_strdup";
     r->is_str = 1;
-#endif  
+#endif
     return n;
 }
 
@@ -258,7 +258,7 @@ void *rc_memdup_(const void *p, size_t size, const char *file, int line) {
     RefObj *r;
 #endif
     char *n = rc_alloc(size);
-    if(!n) 
+    if(!n)
         return NULL;
     memcpy(n, p, size);
 #ifndef NDEBUG
@@ -268,7 +268,7 @@ void *rc_memdup_(const void *p, size_t size, const char *file, int line) {
     r->list->line = line;
     r->list->desc = "rc_memdup";
     r->is_str = 0;
-#endif  
+#endif
     return n;
 }
 
@@ -279,7 +279,7 @@ void *rc_retain(void *p) {
 void *rc_retain_(void *p, const char *file, int line) {
 #endif
     RefObj *r;
-    if(!p) 
+    if(!p)
         return NULL;
     r = (RefObj *)((char *)p - sizeof *r);
     r->refcnt++;
@@ -295,33 +295,33 @@ void rc_release(void *p) {
 void rc_release_(void *p, const char *file, int line) {
 #endif
     RefObj *r;
-    if(!p) 
+    if(!p)
         return;
     r = (RefObj *)((char *)p - sizeof *r);
     r->refcnt--;
 #if !defined(NDEBUG) && defined(DEBUG_DOUBLE_DEALLOC)
-	if(r->refcnt < 0) {
-		add_list_item(r, file, line, "rc_release ***");
-	} else
-#endif	
+    if(r->refcnt < 0) {
+        add_list_item(r, file, line, "rc_release ***");
+    } else
+#endif
     if(r->refcnt == 0) {
-#ifndef NDEBUG        
+#ifndef NDEBUG
         char *data = (char*)r + sizeof *r;
-        int sentinel = *(int *)(data + r->size);        
+        int sentinel = *(int *)(data + r->size);
         if(sentinel != SENTINEL) {
-            assert(r->list);        
+            assert(r->list);
             fprintf(stderr, "** Buffer overrun on object allocated at %s:%d\n", r->list->file, r->list->line);
             fflush(stderr);
         }
-        
-#  ifdef DEBUG_DOUBLE_DEALLOC	
+
+#  ifdef DEBUG_DOUBLE_DEALLOC
         add_list_item(r, file, line, "rc_release");
-		(void)free_list;
+        (void)free_list;
 #  else
         assert(alloced >= r->size);
         alloced -= r->size;
         rc_free_count++;
-        if(rc_root == r) rc_root = r->next; 
+        if(rc_root == r) rc_root = r->next;
         if(r->next) r->next->prev = r->prev;
         if(r->prev) r->prev->next = r->next;
         free_list(r->list);
@@ -331,9 +331,9 @@ void rc_release_(void *p, const char *file, int line) {
         if(r->dtor != NULL) {
             r->dtor(p);
         }
-#ifndef DEBUG_DOUBLE_DEALLOC		
+#ifndef DEBUG_DOUBLE_DEALLOC
         free(r);
-#endif		
+#endif
     }
 #ifndef NDEBUG
     else {

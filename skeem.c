@@ -9,7 +9,6 @@
 #include <math.h>
 #include <assert.h>
 
-#include "refcnt.h"
 #include "skeem.h"
 
 #ifdef NDEBUG
@@ -28,7 +27,7 @@ typedef struct SkObj {
     enum {SYMBOL, VALUE, CONS, CFUN, TRUE, FALSE, LAMBDA, CDATA, ERROR} type;
     union {
         char *value;
-        sk_cfun func;
+        sk_cfun_t func;
         struct {
            struct SkObj *car, *cdr; /* for sk_cons cells */
         };
@@ -36,7 +35,7 @@ typedef struct SkObj {
            struct SkObj *args, *body; /* for lambdas */
         };
         struct {
-            void *cdata; ref_dtor cdtor;
+            void *cdata; ref_dtor_t cdtor;
         };
     };
 } SkObj;
@@ -77,7 +76,7 @@ SkEnv *sk_env_createn(SkEnv *parent, unsigned int size) {
     env->mask = size-1;
     env->table = calloc(size, sizeof *env->table);
     env->parent = rc_retain(parent);
-    rc_set_dtor(env, (ref_dtor)env_dtor);
+    rc_set_dtor(env, (ref_dtor_t)env_dtor);
     return env;
 }
 SkEnv *sk_env_create(SkEnv *parent) {
@@ -151,57 +150,37 @@ static void SkExpr_dtor(SkObj *e) {
     }
 }
 
-#ifdef NDEBUG
 SkObj *sk_symbol(const char *sk_value) {
     SkObj *e = rc_alloc(sizeof *e);
-#else
-SkObj *sk_symbol_(const char *sk_value, const char *file, int line) {
-    SkObj *e = rc_alloc_(sizeof *e, file, line);
-#endif
     MEMCHECK(e);
-    rc_set_dtor(e, (ref_dtor)SkExpr_dtor);
+    rc_set_dtor(e, (ref_dtor_t)SkExpr_dtor);
     e->type = SYMBOL;
     e->value = strdup(sk_value);
     return e;
 }
 
-#ifdef NDEBUG
 SkObj *sk_value(const char *val) {
     SkObj *e = rc_alloc(sizeof *e);
-#else
-SkObj *sk_value_(const char *val, const char *file, int line) {
-    SkObj *e = rc_alloc_(sizeof *e, file, line);
-#endif
     MEMCHECK(e);
-    rc_set_dtor(e, (ref_dtor)SkExpr_dtor);
+    rc_set_dtor(e, (ref_dtor_t)SkExpr_dtor);
     e->type = VALUE;
     e->value = strdup(val);
     return e;
 }
 
-#ifdef NDEBUG
 SkObj *sk_value_o(char *val) {
     SkObj *e = rc_alloc(sizeof *e);
-#else
-SkObj *sk_value_o_(char *val, const char *file, int line) {
-    SkObj *e = rc_alloc_(sizeof *e, file, line);
-#endif
     MEMCHECK(e);
-    rc_set_dtor(e, (ref_dtor)SkExpr_dtor);
+    rc_set_dtor(e, (ref_dtor_t)SkExpr_dtor);
     e->type = VALUE;
     e->value = val;
     return e;
 }
 
-#ifdef NDEBUG
 SkObj *sk_error(const char *val) {
     SkObj *e = rc_alloc(sizeof *e);
-#else
-SkObj *sk_error_(const char *val, const char *file, int line) {
-    SkObj *e = rc_alloc_(sizeof *e, file, line);
-#endif
     MEMCHECK(e);
-    rc_set_dtor(e, (ref_dtor)SkExpr_dtor);
+    rc_set_dtor(e, (ref_dtor_t)SkExpr_dtor);
     e->type = ERROR;
     e->value = strdup(val);
     return e;
@@ -216,88 +195,55 @@ SkObj *sk_errorf(const char *fmt, ...) {
     return sk_error(buffer);
 }
 
-#ifdef NDEBUG
 SkObj *sk_boolean(int val) {
     SkObj *e = rc_alloc(sizeof *e);
-#else
-SkObj *sk_boolean_(int val, const char *file, int line) {
-    SkObj *e = rc_alloc_(sizeof *e, file, line);
-#endif
     MEMCHECK(e);
-    rc_set_dtor(e, (ref_dtor)SkExpr_dtor);
+    rc_set_dtor(e, (ref_dtor_t)SkExpr_dtor);
     e->type = val ? TRUE : FALSE;
     return e;
 }
 
 #define RESULT_SIZE 64
 #define PRECISION   30
-#ifdef NDEBUG
 SkObj *sk_number(double n) {
     char result[RESULT_SIZE];
     snprintf(result, sizeof result - 1, "%.*g", PRECISION, n);
     return sk_value(result);
 }
-#else
-SkObj *sk_number_(double n, const char *file, int line) {
-    char result[RESULT_SIZE];
-    snprintf(result, sizeof result - 1, "%.*g", PRECISION, n);
-    return sk_value_(result, file, line);
-}
-#endif
 
-#ifdef NDEBUG
 SkObj *sk_cons(SkObj *car, SkObj *sk_cdr) {
     SkObj *e = rc_alloc(sizeof *e);
-#else
-SkObj *sk_cons_(SkObj *car, SkObj *sk_cdr, const char *file, int line) {
-    SkObj *e = rc_alloc_(sizeof *e, file, line);
-#endif
     MEMCHECK(e);
-    rc_set_dtor(e, (ref_dtor)SkExpr_dtor);
+    rc_set_dtor(e, (ref_dtor_t)SkExpr_dtor);
     e->type = CONS;
     e->car = car;
     e->cdr = sk_cdr;
     return e;
 }
 
-#ifdef NDEBUG
 SkObj *sk_lambda(SkObj *args, SkObj *body) {
     SkObj *e = rc_alloc(sizeof *e);
-#else
-SkObj *sk_lambda_(SkObj *args, SkObj *body, const char *file, int line) {
-    SkObj *e = rc_alloc_(sizeof *e, file, line);
-#endif
     MEMCHECK(e);
-    rc_set_dtor(e, (ref_dtor)SkExpr_dtor);
+    rc_set_dtor(e, (ref_dtor_t)SkExpr_dtor);
     e->type = LAMBDA;
     e->args = args;
     e->body = body;
     return e;
 }
 
-#ifdef NDEBUG
-SkObj *sk_cfun(sk_cfun func) {
+SkObj *sk_cfun(sk_cfun_t func) {
     SkObj *e = rc_alloc(sizeof *e);
-#else
-SkObj *sk_cfun_(sk_cfun func, const char *file, int line) {
-    SkObj *e = rc_alloc_(sizeof *e, file, line);
-#endif
     MEMCHECK(e);
-    rc_set_dtor(e, (ref_dtor)SkExpr_dtor);
+    rc_set_dtor(e, (ref_dtor_t)SkExpr_dtor);
     e->type = CFUN;
     e->func = func;
     return e;
 }
 
-#ifdef NDEBUG
-SkObj *sk_cdata(void *cdata, ref_dtor dtor) {
+SkObj *sk_cdata(void *cdata, ref_dtor_t dtor) {
     SkObj *e = rc_alloc(sizeof *e);
-#else
-SkObj *sk_cdata_(void *cdata, ref_dtor dtor, const char *file, int line) {
-    SkObj *e = rc_alloc_(sizeof *e, file, line);
-#endif
     MEMCHECK(e);
-    rc_set_dtor(e, (ref_dtor)SkExpr_dtor);
+    rc_set_dtor(e, (ref_dtor_t)SkExpr_dtor);
     e->type = CDATA;
     e->cdata = cdata;
     e->cdtor = dtor;
@@ -309,7 +255,7 @@ void *sk_get_cdata(SkObj *e) {
     return e->cdata;
 }
 
-ref_dtor sk_get_cdtor(SkObj *e) {
+ref_dtor_t sk_get_cdtor(SkObj *e) {
     if(!e || e->type != CDATA) return NULL;
     return e->cdtor;
 }
@@ -320,14 +266,8 @@ but it needs a separate pointer to track the last item in the list.
 Also, be careful to only use it when constructing new lists as existing
 lists are supposed to be immutable.
 */
-#ifdef NDEBUG
 static void list_append1(SkObj **list, SkObj *a, SkObj **last) {
     SkObj *item = sk_cons(NULL, NULL);
-#else
-#  define list_append1(l, a, ls) list_append1_(l, a, ls, __FILE__, __LINE__)
-static void list_append1_(SkObj **list, SkObj *a, SkObj **last, const char *file, int line) {
-    SkObj *item = sk_cons_(NULL, NULL, file, line);
-#endif
     item->car = a;
     if(!*last)
         *list = item;
@@ -1061,14 +1001,13 @@ SkObj *sk_apply(SkEnv *env, SkObj *f, SkObj *a) {
     return r;
 }
 
-#if 0
 /* =============================================================
   Reference Counter
 ============================================================= */
-/* TODO: use this instead of the external ref counter */
+
 typedef struct refobj {
     unsigned int refcnt;
-    ref_dtor dtor;
+    ref_dtor_t dtor;
 } RefObj;
 
 void *rc_alloc(size_t size) {
@@ -1101,15 +1040,12 @@ void rc_release(void *p) {
     }
 }
 
-typedef void (*ref_dtor)(void *);
-
-void rc_set_dtor(void *p, ref_dtor dtor) {
+void rc_set_dtor(void *p, ref_dtor_t dtor) {
     RefObj *r;
     if(!p) return;
     r = (RefObj *)((char *)p - sizeof *r);
     r->dtor = dtor;
 }
-#endif
 
 /* =============================================================
   Library
