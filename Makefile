@@ -1,8 +1,8 @@
 CC=gcc
 AWK=awk
 
-# TODO: You need to comment out this line once things get relatively stable
-BUILD=debug
+# Run `make debug` for a debug build
+# BUILD=debug
 
 CFLAGS = -c -Wall
 LDFLAGS = -lm
