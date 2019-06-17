@@ -8,25 +8,37 @@
 
 static char *readfile(const char *fname);
 
+/* See the bottom of this file. It adds some
+file I/O functions that are not included in
+the Skeem built-in functions. */
 static void add_io_functions(SkEnv *global);
 
 int main(int argc, char *argv[]) {
 
     int rv = 0;
 
+    /* Create a global environment where functions and
+    variables are stored. `sk_global_env()` also adds the
+    built-in functions to the new environment. */
     SkEnv *global = sk_global_env();
 
+    /* We can add our own domain specific functions
+    to the interpreter */
     add_io_functions(global);
 
     if(argc > 1) {
-
+        /* Executing a file */
         char *text = readfile(argv[1]);
         if(!text) {
             fprintf(stderr, "error: reading %s: %s\n", argv[1], strerror(errno));
             rv = 1;
         } else {
-
+            /* Evaluate the input string against the
+            global environment */
             SkObj *result = sk_eval_str(global, text);
+
+            /* Check for pars/evaluation errors and print the
+            result */
             if(sk_is_error(result)) {
                 fprintf(stderr, "error: %s\n", sk_get_text(result));
             } else {
@@ -39,14 +51,19 @@ int main(int argc, char *argv[]) {
             free(text);
         }
     } else {
-
+        /* REPL */
         while(1) {
             char buffer[512];
             fputs(">>> ", stdout);
             if(!fgets(buffer, sizeof buffer, stdin))
                 break;
 
+            /* Evaluate the input string against the
+            global environment */
             SkObj *result = sk_eval_str(global, buffer);
+
+            /* Check for pars/evaluation errors and print the
+            result */
             if(sk_is_error(result)) {
                 fprintf(stderr, "error: %s\n", sk_get_text(result));
             } else if(!sk_is_null(result)) {
@@ -54,15 +71,20 @@ int main(int argc, char *argv[]) {
                 puts(text);
                 free(text);
             }
-            if(result) rc_release(result);
+
+            /* Tell the reference counter to release the
+            result object */
+            rc_release(result);
         }
     }
 
+    /* Release the global object through the  */
     rc_release(global);
 
     return rv;
 }
 
+/* Reads an entire file into a heap allocated buffer */
 static char *readfile(const char *fname) {
     FILE *f;
     long len,r;
@@ -171,6 +193,9 @@ static SkObj *bif_feof(SkEnv *env, SkObj *e) {
     return sk_boolean(feof(f));
 }
 
+/* Register the functions. For each function, create a
+CFun object and adds it to the global environment under the
+specific name */
 static void add_io_functions(SkEnv *global) {
     sk_env_put(global, "readfile", sk_cfun(bif_readfile));
     sk_env_put(global, "fopen", sk_cfun(bif_fopen));
