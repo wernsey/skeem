@@ -152,7 +152,8 @@ static SkObj *bif_fputs(SkEnv *env, SkObj *e) {
     /* You can check the cdtor of the CDATA object to make sure it's
         of the correct type.
         Technically the `sk_is_cdata()` call here is not necessary because
-        `sk_get_cdtor()` will also return NULL if it's not given a CDATA
+        `sk_get_cdtor()` will also return NULL if it's not given a CDATA.
+        I do it here for completeness, but the other functions don't.
     */
     if(sk_is_null(file) || !sk_is_cdata(file) || sk_get_cdtor(file) != file_dtor)
         return sk_error("'fputs' expects a file as its first parameter");
@@ -165,7 +166,7 @@ static SkObj *bif_fputs(SkEnv *env, SkObj *e) {
 
 static SkObj *bif_fgets(SkEnv *env, SkObj *e) {
     SkObj *file = sk_car(e);
-    if(sk_is_null(file) || !sk_is_cdata(file) || sk_get_cdtor(file) != file_dtor)
+    if(sk_get_cdtor(file) != file_dtor)
         return sk_error("'fgets' expects a file as its first parameter");
     assert(sk_get_cdata(file));
     FILE *f = sk_get_cdata(file);
@@ -186,11 +187,16 @@ static SkObj *bif_fgets(SkEnv *env, SkObj *e) {
 
 static SkObj *bif_feof(SkEnv *env, SkObj *e) {
     SkObj *file = sk_car(e);
-    if(sk_is_null(file) || !sk_is_cdata(file) || sk_get_cdtor(file) != file_dtor)
+    if(sk_get_cdtor(file) != file_dtor)
         return sk_error("'feof' expects a file as its first parameter");
     assert(sk_get_cdata(file));
     FILE *f = sk_get_cdata(file);
     return sk_boolean(feof(f));
+}
+
+static SkObj *bif_is_file(SkEnv *env, SkObj *e) {
+    SkObj *file = sk_car(e);
+    return sk_boolean(sk_get_cdtor(file) == file_dtor);
 }
 
 /* Register the functions. For each function, create a
@@ -202,4 +208,5 @@ static void add_io_functions(SkEnv *global) {
     sk_env_put(global, "fputs", sk_cfun(bif_fputs));
     sk_env_put(global, "fgets", sk_cfun(bif_fgets));
     sk_env_put(global, "feof", sk_cfun(bif_feof));
+    sk_env_put(global, "file?", sk_cfun(bif_is_file));
 }
