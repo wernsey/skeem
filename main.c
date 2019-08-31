@@ -6,6 +6,10 @@
 
 #include "skeem.h"
 
+#ifdef SK_USE_EXTERNAL_REF_COUNTER
+#  include "refcnt.h"
+#endif
+
 static char *readfile(const char *fname);
 
 /* See the bottom of this file. It adds some
@@ -16,6 +20,10 @@ static void add_io_functions(SkEnv *global);
 int main(int argc, char *argv[]) {
 
     int rv = 0;
+
+#ifdef SK_USE_EXTERNAL_REF_COUNTER
+    rc_init();
+#endif
 
     /* Create a global environment where functions and
     variables are stored. `sk_global_env()` also adds the

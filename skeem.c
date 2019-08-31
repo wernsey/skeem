@@ -11,6 +11,10 @@
 
 #include "skeem.h"
 
+#ifdef SK_USE_EXTERNAL_REF_COUNTER
+#  include "refcnt.h"
+#endif
+
 #ifdef NDEBUG
 #  define MEMCHECK(p) if(!p) abort() /* You're doomed */
 #else
@@ -1034,6 +1038,7 @@ SkObj *sk_apply(SkEnv *env, SkObj *f, SkObj *a) {
   Reference Counter
 ============================================================= */
 
+#ifndef SK_USE_EXTERNAL_REF_COUNTER
 typedef struct refobj {
     unsigned int refcnt;
     ref_dtor_t dtor;
@@ -1075,6 +1080,7 @@ void rc_set_dtor(void *p, ref_dtor_t dtor) {
     r = (RefObj *)((char *)p - sizeof *r);
     r->dtor = dtor;
 }
+#endif
 
 /* =============================================================
   Library
@@ -1418,19 +1424,23 @@ static SkObj *bif_pow(SkEnv *env, SkObj *e) {
 
 /* Skeem's hash tables are just CData objects of the SkEnv type... */
 
+static void hash_table_dtor(void *p) {
+    SkEnv *e = p;
+    rc_release(e);
+}
 static SkObj *bif_make_hash(SkEnv *env, SkObj *e) {
     SkEnv *hash = sk_env_create(NULL);
-    return sk_cdata(hash, (ref_dtor_t)env_dtor);
+    return sk_cdata(hash, hash_table_dtor);
 }
 
 static SkObj *bif_is_hash(SkEnv *env, SkObj *e) {
     SkObj *hash = sk_car(e);
-    return sk_boolean(sk_get_cdtor(hash) == (ref_dtor_t)env_dtor);
+    return sk_boolean(sk_get_cdtor(hash) == (ref_dtor_t)hash_table_dtor);
 }
 
 static SkObj *bif_hash_set(SkEnv *env, SkObj *e) {
     SkObj *hash = sk_car(e);
-    if(sk_get_cdtor(hash) != (ref_dtor_t)env_dtor)
+    if(sk_get_cdtor(hash) != (ref_dtor_t)hash_table_dtor)
         return sk_error("'hash-set' expects a hash table");
     SkEnv *ht = sk_get_cdata(hash);
     const char *key = sk_get_text(sk_cadr(e));
@@ -1444,7 +1454,7 @@ static SkObj *bif_hash_set(SkEnv *env, SkObj *e) {
 
 static SkObj *bif_hash_ref(SkEnv *env, SkObj *e) {
     SkObj *ho = sk_car(e);
-    if(sk_get_cdtor(ho) != (ref_dtor_t)env_dtor)
+    if(sk_get_cdtor(ho) != (ref_dtor_t)hash_table_dtor)
         return sk_error("'hash-ref' expects a hash table");
     SkEnv *ht = sk_get_cdata(ho);
     const char *key = sk_get_text(sk_cadr(e));
@@ -1466,7 +1476,7 @@ static SkObj *bif_hash_ref(SkEnv *env, SkObj *e) {
 
 static SkObj *bif_hash_has_key(SkEnv *env, SkObj *e) {
     SkObj *ho = sk_car(e);
-    if(sk_get_cdtor(ho) != (ref_dtor_t)env_dtor)
+    if(sk_get_cdtor(ho) != (ref_dtor_t)hash_table_dtor)
         return sk_error("'hash-has-key' expects a hash table");
     SkEnv *ht = sk_get_cdata(ho);
     const char *key = sk_get_text(sk_cadr(e));
@@ -1479,7 +1489,7 @@ static SkObj *bif_hash_has_key(SkEnv *env, SkObj *e) {
 
 static SkObj *bif_hash_next(SkEnv *env, SkObj *e) {
     SkObj *ho = sk_car(e);
-    if(sk_get_cdtor(ho) != (ref_dtor_t)env_dtor)
+    if(sk_get_cdtor(ho) != (ref_dtor_t)hash_table_dtor)
         return sk_error("'hash-next' expects a hash table");
     SkEnv *ht = sk_get_cdata(ho);
     const char *key = sk_cadr(e) ? sk_get_text(sk_cadr(e)) : NULL;    

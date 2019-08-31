@@ -14,18 +14,19 @@ EXECUTABLE=skeem
 DOCSDIR = ./doc
 DISTFILE=skeem.zip
 
-OBJECTS=$(SOURCES:.c=.o)
-
 ifeq ($(BUILD),debug)
 # Debug
 #CFLAGS += -O0 -g --std=c11 -pedantic
-CFLAGS += -O0 -g
+CFLAGS += -O0 -g -DSK_USE_EXTERNAL_REF_COUNTER
 LDFLAGS +=
+SOURCES += refcnt.c
 else
 # Release mode
 CFLAGS += -O2 -DNDEBUG
 LDFLAGS += -s
 endif
+
+OBJECTS=$(SOURCES:.c=.o)
 
 ifeq ($(OS),Windows_NT)
   EXECUTABLE:=$(EXECUTABLE).exe
@@ -44,6 +45,7 @@ $(EXECUTABLE): $(OBJECTS)
 
 # Add header dependencies here
 skeem.o : skeem.c skeem.h
+refcnt.o : refcnt.c refcnt.h
 
 docs: $(DOCSDIR) $(DOCSDIR)/skeem.html $(DOCSDIR)/Readme.html
 

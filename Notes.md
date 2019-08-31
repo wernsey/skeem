@@ -43,13 +43,13 @@
     * [x] It now supports the `(define x (lambda args (display args)))` syntax.
     * [x] If I ever implement the `(x . y)` syntax, the `(arg1 arg2 . rest)` syntax should also be doable.
 * [x] Implement [dotted pairs](https://ds26gte.github.io/tyscheme/index-Z-H-4.html#node_sec_2.2.3)
-* [ ] Maybe I can repurpose the `SkEnv` objects for implementing hash tables similar to
+* [x] Maybe I can repurpose the `SkEnv` objects for implementing hash tables similar to
   [Racket's hash tables][hashtables].
     * I don't think it is necessary to use anything other than strings as keys (so `SYMBOL`s or `VALUE`s),
     so I only need a `(make-hash)` function.
     * I'll make an exception wrt the immutability of Skeem objects just this one time.
         * So no need for `(make-immutable-hash)`
-    * [ ] You might even be able to do the `(hash-set)` function by using the `SkEnv`'s parent.
+    * [ ] ~~You might even be able to do the `(hash-set)` function by using the `SkEnv`'s parent.~~
     * [ ] Serialization should lead to something like `(hash "apple" 'red "banana" 'yellow)`.
       * You don't need to go so far as the ` #hash` form.
     * To implement a function like `(hash-map)` you'll need to be able to iterate through the
@@ -67,12 +67,12 @@ Here is the Awk script to renumber the tests in test/test.scm
 
 ## Debugging the Reference Counter
 
-Older versions of Skeem used a separate reference counter that has functionality
-to check for unreleased references when the interpreter terminates if it was
-compiled in debug mode (`NDEBUG` not defined).
+If you define `SK_USE_EXTERNAL_REF_COUNTER` in the preprocessor, Skeem will use a 
+separate reference  counter that has functionality to check for unreleased references 
+when the interpreter terminates if it was compiled in debug mode (`NDEBUG` not defined).
 
-I removed this functionality because I want Skeem to be self contained and
-not require the separate `refcnt.c` and `refcnt.h`.
+This functionality is disabled in the normal build because I want Skeem to be self 
+contained and not require the separate `refcnt.c` and `refcnt.h`.
 
 I just want to keep these snippets around for reference. In the header:
 
