@@ -134,6 +134,35 @@ SkObj *sk_env_get(SkEnv *env, const char *name) {
     return sk_errorf("no such variable '%s'", name);
 }
 
+/* This function is here because it can be used to iterate through the
+hash tables, but it is not generally useful because it won't be able to
+deal with a situation where a key is in a SkEnv and in that SkEnv's parent.
+That's why I don't expose it in the API */
+static const char *sk_env_next(SkEnv *env, const char *name) {
+    unsigned int h;
+    hash_element *e;
+    if(!env) return NULL;
+    if(!name) {
+        for(h = 0; h <= env->mask; h++) {
+            if((e = env->table[h]))
+                return e->name;
+        }
+    } else {
+        h = hash(name) & env->mask;
+        for(e = env->table[h]; e; e = e->next) {
+            if(!strcmp(e->name, name)) {
+                if(e->next)
+                    return e->next->name;
+                for(h++; h <= env->mask; h++) {
+                    if(env->table[h])
+                        return env->table[h]->name;
+                }
+            }
+        }
+    }
+    return NULL;
+}
+
 /* =============================================================
   Objects
 ============================================================= */
@@ -1387,6 +1416,79 @@ static SkObj *bif_pow(SkEnv *env, SkObj *e) {
     return sk_number(pow(x, y));
 }
 
+/* Skeem's hash tables are just CData objects of the SkEnv type... */
+
+static SkObj *bif_make_hash(SkEnv *env, SkObj *e) {
+    SkEnv *hash = sk_env_create(NULL);
+    return sk_cdata(hash, (ref_dtor_t)env_dtor);
+}
+
+static SkObj *bif_is_hash(SkEnv *env, SkObj *e) {
+    SkObj *hash = sk_car(e);
+    return sk_boolean(sk_get_cdtor(hash) == (ref_dtor_t)env_dtor);
+}
+
+static SkObj *bif_hash_set(SkEnv *env, SkObj *e) {
+    SkObj *hash = sk_car(e);
+    if(sk_get_cdtor(hash) != (ref_dtor_t)env_dtor)
+        return sk_error("'hash-set' expects a hash table");
+    SkEnv *ht = sk_get_cdata(hash);
+    const char *key = sk_get_text(sk_cadr(e));
+    if(!key)
+        return sk_error("'hash-set' expects a key");
+    SkObj *value = sk_caddr(e);
+
+    sk_env_put(ht, key, rc_retain(value));
+    return rc_retain(hash);
+}
+
+static SkObj *bif_hash_ref(SkEnv *env, SkObj *e) {
+    SkObj *ho = sk_car(e);
+    if(sk_get_cdtor(ho) != (ref_dtor_t)env_dtor)
+        return sk_error("'hash-ref' expects a hash table");
+    SkEnv *ht = sk_get_cdata(ho);
+    const char *key = sk_get_text(sk_cadr(e));
+    if(!key)
+        return sk_error("'hash-ref' expects a key");
+    
+    hash_element* v = env_findg_r(ht, key, hash(key));
+    if(!v) {
+        SkObj *fail = sk_caddr(e);
+        if(!fail)
+            return sk_errorf("no mapping for '%s' in hash table", key);
+        if(sk_is_procedure(fail))
+            return sk_apply(env, fail, NULL);
+        else
+            return rc_retain(fail);
+    }
+    return rc_retain(v->ex);
+}
+
+static SkObj *bif_hash_has_key(SkEnv *env, SkObj *e) {
+    SkObj *ho = sk_car(e);
+    if(sk_get_cdtor(ho) != (ref_dtor_t)env_dtor)
+        return sk_error("'hash-has-key' expects a hash table");
+    SkEnv *ht = sk_get_cdata(ho);
+    const char *key = sk_get_text(sk_cadr(e));
+    if(!key)
+        return sk_error("'hash-has-key' expects a key");
+    
+    hash_element* v = env_findg_r(ht, key, hash(key));
+    return sk_boolean(!!v);
+}
+
+static SkObj *bif_hash_next(SkEnv *env, SkObj *e) {
+    SkObj *ho = sk_car(e);
+    if(sk_get_cdtor(ho) != (ref_dtor_t)env_dtor)
+        return sk_error("'hash-next' expects a hash table");
+    SkEnv *ht = sk_get_cdata(ho);
+    const char *key = sk_cadr(e) ? sk_get_text(sk_cadr(e)) : NULL;    
+    const char *next = sk_env_next(ht, key);
+    if(!next)
+        return NULL;
+    return sk_value(next);
+}
+
 #define TEXT_LIB(g,t) do {SkObj *x=sk_eval_str(g,t);assert(!sk_is_error(x));rc_release(x);} while(0)
 
 /** ## Built-in Functions */
@@ -1554,6 +1656,21 @@ SkEnv *sk_global_env() {
     sk_env_put(global, "pow", sk_cfun(bif_pow));
     /** `pi` - 3.14159... */
     sk_env_put(global, "pi", sk_number(M_PI));
+    
+    /** `(make-hash)` - creates a hash table */
+    sk_env_put(global, "make-hash", sk_cfun(bif_make_hash));
+    /** `(hash? h)` - checks whether `h` is a hash table */
+    sk_env_put(global, "hash?", sk_cfun(bif_is_hash));
+    /** `(hash-set h k v)` - sets the value associated with `k` to `v` in hash table `h`. */
+    sk_env_put(global, "hash-set", sk_cfun(bif_hash_set));
+    /** `(hash-ref h k [fail])` - retrieves the value associated with `k` in hash table `h`. 
+     * If `k` is not found: if `fail` is a procedure, `fail` is called and its result returned,
+     * otherwise `fail` is returned directly. */
+    sk_env_put(global, "hash-ref", sk_cfun(bif_hash_ref));
+    /** `(hash-has-key h k)` - Returns `#t` if key `k` is in hash table `h`, `#f` otherwise. */
+    sk_env_put(global, "hash-has-key", sk_cfun(bif_hash_has_key));
+
+    sk_env_put(global, "hash-next", sk_cfun(bif_hash_next));
 
     return global;
 }

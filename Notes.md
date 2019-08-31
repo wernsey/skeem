@@ -112,56 +112,16 @@ Skeem uses the DJB hash, which is [a bit controversial](http://dmytry.blogspot.c
 [This StackOverflow answer](https://stackoverflow.com/a/13809282/115589) explains the constants in DJB
 (an older version used the XOR variant, but I have since read about how it throws away information in the carry bit).
 
-I have a TODO to add hash tables to the language similar to Racket's `(make-hash)` function
-
-Functions I meant to use to iterate through hash tables...
+To iterate through hash tables:
 
 ```
-static void sk_env_flatten_r(SkEnv *env, SkEnv *into) {
-    unsigned int h;
-    hash_element *e;
-    if(!env) return;
-    sk_env_flatten_r(env->parent, into);
-    for(h = 0; h <= env->mask; h++) {
-        for(e = env->table[h]; e; e = e->next)
-            sk_env_put(into, e->name, rc_retain(e->ex));
-    }
-}
-SkEnv *sk_env_flatten(SkEnv *env) {
-    SkEnv *into = sk_env_create(NULL);
-    sk_env_flatten_r(env, into);
-    return into;
-}
-
-const char *sk_env_next(SkEnv *env, const char *name) {
-    unsigned int h;
-    hash_element *e;
-    if(!env) return NULL;
-    if(!name) {
-        for(h = 0; h <= env->mask; h++) {
-            if((e = env->table[h]))
-                return e->name;
-        }
-    } else {
-        h = hash(name) & env->mask;
-        for(e = env->table[h]; e; e = e->next) {
-            if(!strcmp(e->name, name)) {
-                if(e->next)
-                    return e->next->name;
-                for(h++; h <= env->mask; h++) {
-                    if(env->table[h])
-                        return env->table[h]->name;
-                }
-            }
-        }
-    }
-    return NULL;
-
-    // cant do this: What if the key is in the child _and_ the parent?
-    // Althrough I really want to:
-    //return sk_env_next(env->parent, name);
-}
+(set! x '())
+(set! x (hash-next h x))
+(null? x)
 ```
+
+* **TODO:** `(make-hash)` needs to take a list of key-value pairs as parameter.
+* **TODO:** `(hash-map)`, `(hash-keys)` and `(hash-values)`. Maybe also `(hash->list)`
 
 ### Further Reading
 
