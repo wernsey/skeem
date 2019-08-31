@@ -84,10 +84,10 @@ SkEnv *sk_env_create(SkEnv *parent) {
 }
 
 static unsigned int hash(const char *s) {
+    /* DJB hash */
     unsigned int h = 5381;
-    /* DJB hash, XOR variant */
     for(;s[0];s++)
-        h = ((h << 5) + h) ^ s[0];
+        h = ((h << 5) + h) + s[0];
     return h;
 }
 

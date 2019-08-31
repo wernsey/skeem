@@ -109,8 +109,8 @@ that wasn't released.
 ## Hash Tables
 
 Skeem uses the DJB hash, which is [a bit controversial](http://dmytry.blogspot.com/2009/11/horrible-hashes.html).
-It uses [the XOR variant](http://www.cse.yorku.ca/~oz/hash.html), but was chosen for its simplicity.
-[This StackOverflow answer](https://stackoverflow.com/a/13809282/115589) explains the constants in DJB.
+[This StackOverflow answer](https://stackoverflow.com/a/13809282/115589) explains the constants in DJB
+(an older version used the XOR variant, but I have since read about how it throws away information in the carry bit).
 
 I have a TODO to add hash tables to the language similar to Racket's `(make-hash)` function
 

@@ -42,8 +42,8 @@ The function `function_foo`'s declaration in C must look like the
 
 ```
 static SkObj *function_foo(SkEnv *env, SkObj *args) {
-	/* `args` contain the arguments passed to the function
-		as a list of cons cells */
+    /* `args` contain the arguments passed to the function
+        as a list of cons cells */
     return sk_value("foo");
 }
 ```
