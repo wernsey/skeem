@@ -81,6 +81,7 @@ int sk_is_cons(SkObj *e);
  * * `sk_cadr(e)` - equivalent to `sk_car(sk_cdr(e))`, implemented as a macro.
  * * `sk_cdar(e)` - equivalent to `sk_cdr(sk_car(e))`, implemented as a macro.
  * * `sk_cddr(e)` - equivalent to `sk_cdr(sk_cdr(e))`, implemented as a macro.
+ * * `sk_caaar(e)` to `sk_cdddr(e)` - equivalent to `sk_car(sk_caar(e))` through `sk_cdr(sk_cddr(e))`, also implemented as macros
  */
 SkObj *sk_car(SkObj *e);
 SkObj *sk_cdr(SkObj *e);
@@ -88,6 +89,15 @@ SkObj *sk_cdr(SkObj *e);
 #define sk_cadr(e) sk_car(sk_cdr(e))
 #define sk_cdar(e) sk_cdr(sk_car(e))
 #define sk_cddr(e) sk_cdr(sk_cdr(e))
+
+#define sk_caaar(e) sk_car(sk_caar(e))
+#define sk_caadr(e) sk_car(sk_cadr(e))
+#define sk_cadar(e) sk_car(sk_cdar(e))
+#define sk_caddr(e) sk_car(sk_cddr(e))
+#define sk_cdaar(e) sk_cdr(sk_caar(e))
+#define sk_cdadr(e) sk_cdr(sk_cadr(e))
+#define sk_cddar(e) sk_cdr(sk_cdar(e))
+#define sk_cdddr(e) sk_cdr(sk_cddr(e))
 
 /**
  * #### `int sk_is_list(SkObj *e);`
