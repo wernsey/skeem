@@ -64,6 +64,8 @@
 (display "Test 26 ............................:" (test-equal (reverse b) '(4 3 2 1) ))
 (display "Test 27 ............................:" (test-equal (length b) 4))
 (display "Test 28 ............................:" (test-equal (append '(1 2) '(3 4)) b))
+(display "Test 28 ............................:" (test-equal (append '() '(1 2 3 4)) b))
+(display "Test 28 ............................:" (test-equal (append '(1 2 3 4) '()) b))
 
 ; Let
 (define X 100)

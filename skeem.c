@@ -969,10 +969,10 @@ end_let:
                 }
 
                 SkObj *f = args->car, *a = args->cdr, *p;
-                if(f->type == CFUN) {
+                if(f && f->type == CFUN) {
                     assert(f->func);
                     result = f->func(env, a);
-                } else if(f->type == LAMBDA) {
+                } else if(f && f->type == LAMBDA) {
 
                     assert(!f->args || sk_is_cons(f->args) || sk_is_symbol(f->args));
 
@@ -1246,6 +1246,8 @@ static SkObj *bif_append(SkEnv *env, SkObj *e) {
     if(sk_length(e) < 2 || !sk_is_list(e->car) || !sk_is_list(e->cdr->car))
         return sk_error("'append' expects two lists");
     SkObj *x, *result = NULL, *last = NULL;
+    if(!sk_car(e)) /* First list is empty */
+        return rc_retain(sk_cadr(e));
     /* Need to shallow copy the first list, but not the second */
     for(x = sk_car(e); x; x = sk_cdr(x))
         list_append1(&result, rc_retain(sk_car(x)), &last);
@@ -1575,9 +1577,11 @@ SkEnv *sk_global_env() {
     /** `(map f L)` - Returns a list where each element is the result of the function `f` applied to the
      * corresponding element in the list `L` */
     sk_env_put(global, "map", sk_cfun(bif_map));
-    /** `(filter f L)` - Returns a list  */
+    /** `(filter f L)` - Returns a list of all the elements in `L` for which the function `f` returns true
+     * when applied to that element.
+     */
     sk_env_put(global, "filter", sk_cfun(bif_filter));
-    /** `(append L1 L2)` - Returns containing the elements of */
+    /** `(append L1 L2)` - Returns containing the elements of `L1` and `L2` */
     sk_env_put(global, "append", sk_cfun(bif_append));
 
     /** `(fold f i L)` and `(fold-right f i L)` - Folds a list `L` using function `f` with the initial value `i` */
@@ -1680,7 +1684,24 @@ SkEnv *sk_global_env() {
     /** `(hash-has-key h k)` - Returns `#t` if key `k` is in hash table `h`, `#f` otherwise. */
     sk_env_put(global, "hash-has-key", sk_cfun(bif_hash_has_key));
 
+    /** `(hash-next h k)` - returns the next key after `k` in the hash table `h`.
+     * If `k` is `'()` the first key is returned. It will return null if `k` is the last key.
+     */
     sk_env_put(global, "hash-next", sk_cfun(bif_hash_next));
+
+    /** `(hash-map h proc)` - Calls the function `(proc k v)` on each key-value pair `k,v` in the
+     * hash table `h`, and returns a list of the results */
+    TEXT_LIB(global, "(define (hash-map h proc) [let [(iter (lambda (h i acc) (let* [(j (hash-next h i))] (if (null? j) acc (iter h j (append acc [list (proc j (hash-ref h j))])) ))))] (iter h '() '())])");
+    /** `(hash-keys h)` - Returns a list of all the keys in the hash table `h` */
+    TEXT_LIB(global, "(define (hash-keys h) (hash-map h (lambda (k v) k )))");
+    /** `(hash-values h)` - Returns a list of all the values in the hash table `h` */
+    TEXT_LIB(global, "(define (hash-values h) (hash-map h (lambda (k v) v )))");
+    /** `(hash->list h)` - Returns a list of the key-value pairs in the hash table `h` */
+    TEXT_LIB(global, "(define (hash->list h) (hash-map h (lambda (k v) (cons k v) )))");
+    /** `(hash-count h)` - Returns the number of key-value pairs in the hash table `h` */
+    TEXT_LIB(global, "(define (hash-count h) (length (hash-keys h)))");
+    /** `(hash-empty? h)` - returns `#t` if the hash table `h` is empty, `#f` otherwise */
+    TEXT_LIB(global, "(define (hash-empty? h) (zero? (hash-count h)))");
 
     return global;
 }
