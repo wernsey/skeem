@@ -119,6 +119,18 @@ static char *readfile(const char *fname) {
     return str;
 }
 
+static SkObj *bif_import(SkEnv *env, SkObj *e) {
+    const char *filename = sk_get_text(sk_car(e));
+    if(!filename[0])
+        return sk_error("'import' expects a filename");
+    char *text = readfile(filename);
+    if(!text)
+        return sk_errorf("unable to import %s: %s", filename, strerror(errno));
+    SkObj *result = sk_eval_str(env, text);
+    free(text);
+    return result;
+}
+
 /* Not invoked directly, but rather used as the destructor
  * I could've just used `fclose` directly and cast it to
  * a `ref_dtor`, but I prefer it this because it is clearer
@@ -146,7 +158,7 @@ static SkObj *bif_fopen(SkEnv *env, SkObj *e) {
 static SkObj *bif_readfile(SkEnv *env, SkObj *e) {
     const char *filename = sk_get_text(sk_car(e));
     if(!filename[0])
-        return sk_error("'readfile' expects a filename and mode");
+        return sk_error("'readfile' expects a filename");
     char *text = readfile(filename);
     if(!text)
         return sk_errorf("unable to read %s: %s", filename, strerror(errno));
@@ -211,6 +223,7 @@ static SkObj *bif_is_file(SkEnv *env, SkObj *e) {
 CFun object and adds it to the global environment under the
 specific name */
 static void add_io_functions(SkEnv *global) {
+    sk_env_put(global, "import", sk_cfun(bif_import));
     sk_env_put(global, "readfile", sk_cfun(bif_readfile));
     sk_env_put(global, "fopen", sk_cfun(bif_fopen));
     sk_env_put(global, "fputs", sk_cfun(bif_fputs));
