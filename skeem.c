@@ -236,11 +236,13 @@ SkObj *sk_boolean(int val) {
     return e;
 }
 
-#define RESULT_SIZE 64
-#define PRECISION   30
+/*
+https://randomascii.wordpress.com/2012/03/08/float-precisionfrom-zero-to-100-digits-2/
+*/
+#define RESULT_SIZE 128
 SkObj *sk_number(double n) {
     char result[RESULT_SIZE];
-    snprintf(result, sizeof result - 1, "%.*g", PRECISION, n);
+    snprintf(result, sizeof result - 1, "%.17g", n);
     return sk_value(result);
 }
 

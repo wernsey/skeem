@@ -141,15 +141,19 @@ elements from [part 2][lispy2]. The reference counter was inspired by
 
 ### Numbers
 
-All values are stored as strings internally.
-This means that (a) precision is negatively affected, and (b) numeric performance is bad because a value needs to
-be converted to a double (through `atof()`) if it is used as a number, and then converted back into a string
-(through `snprintf()`) when it is stored.
+All values are stored as strings internally. It uses the `"%.17g"` format string for `snprintf` - see 
+this article [floating point precision][precision] for more detail.
+
+Numeric performance suffers because a value needs to be converted to a double 
+(through `atof()`) if it is used as a number, and then the result of any arithmetic 
+needs to be converted back into a string (through `snprintf()`) when it is stored.
 
 A solution would be a `NUMBER` type `SkObj` with a `double` value, but the `sk_get_text()` function will
 need some buffer to which to print the text value to.
 Having `sk_get_text()` change its parameter directly is out of the question because it violates the
 immutability of the `SkObj` objects.
+
+[precision]: https://randomascii.wordpress.com/2012/03/08/float-precisionfrom-zero-to-100-digits-2/
 
 ### Garbage collection
 

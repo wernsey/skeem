@@ -52,8 +52,6 @@
     * [ ] ~~You might even be able to do the `(hash-set)` function by using the `SkEnv`'s parent.~~
     * [ ] Serialization should lead to something like `(hash "apple" 'red "banana" 'yellow)`.
       * You don't need to go so far as the ` #hash` form.
-    * To implement a function like `(hash-map)` you'll need to be able to iterate through the
-    hash table. Here's how my [old hash table does it](https://github.com/wernsey/miscsrc/blob/master/hash.c#L177)
     * See also Racket's [hash table reference][hashref]
 
 Here is the Awk script to renumber the tests in test/test.scm
