@@ -306,3 +306,10 @@
 (display "Test 182 ...........................:" (test-equal (hash-count h) 4 ))
 (display "Test 183 ...........................:" (test-not (hash-empty? h) ))
 (display "Test 184 ...........................:" (test (hash-empty? (make-hash)) ))
+
+(define H (make-hash '[("a" . "FOO") ("b" . "BAR") ( "c" . "BAZ") ("d" . "FRED") ] ))
+
+(define L (hash-map H (lambda (k v) (string-append k " => " v) )))
+(display "Test 185 ...........................:" (test (member? "d => FRED" L) ))
+(display "Test 186 ...........................:" (test (member? "a => FOO" L) ))
+(display "Test 187 ...........................:" (test-not (member? "b => BAZ" L) ))

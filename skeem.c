@@ -1434,6 +1434,21 @@ static void hash_table_dtor(void *p) {
 }
 static SkObj *bif_make_hash(SkEnv *env, SkObj *e) {
     SkEnv *hash = sk_env_create(NULL);
+    SkObj *list = sk_car(e);
+    if(!sk_is_list(list))
+        return sk_error("make-hash expects a list of key-value pairs");
+    /*  (make-hash '[(1 . 2) (3 . 4) (5 . 6)]) */
+    for(; list; list = sk_cdr(list)) {
+        SkObj *pair = sk_car(list);
+        if(!sk_is_cons(pair)) {
+            rc_release(hash);
+            return sk_error("make-hash expects a pair in the list");
+        }
+        const char *key = sk_get_text(sk_car(pair));
+        SkObj *value = sk_cdr(pair);
+        sk_env_put(hash, key, rc_retain(value));
+    }
+
     return sk_cdata(hash, hash_table_dtor);
 }
 
@@ -1583,16 +1598,19 @@ SkEnv *sk_global_env() {
      * when applied to that element.
      */
     sk_env_put(global, "filter", sk_cfun(bif_filter));
-    /** `(append L1 L2)` - Returns containing the elements of `L1` and `L2` */
-    sk_env_put(global, "append", sk_cfun(bif_append));
 
-    /** `(fold f i L)` and `(fold-right f i L)` - Folds a list `L` using function `f` with the initial value `i` */
+    /** `(fold f i L)` and `(fold-right f i L)` - Folds a list `L` by calling `(f e a)`
+     * where `e` is each element in the list L, and `a` is the accumulator with the initial value `i` */
     TEXT_LIB(global,"(define (fold f i L) (if (null? L) i (fold f (f (car L) i) (cdr L))))");
     TEXT_LIB(global,"(define (fold-right f i L) (if (null? L) i (f (car L) (fold-right f i (cdr L)))))");
+
     /** `(member? x L)` - returns `#t` if `x` is a member of the list `L` */
     TEXT_LIB(global,"(define (member? x l) [if (null? l) #f [if (equal? x (car l)) #t (member? x (cdr l)) ]] )");
     /** `(member x L)` - returns the members of `L` following `x` if `x` is a member of the list `L`, `#f` otherwise */
     TEXT_LIB(global,"(define (member x l) [if (null? l) #f [if (equal? x (car l)) l (member x (cdr l)) ]] )");
+
+    /** `(append L1 L2)` - Returns containing the elements of `L1` and `L2` */
+    sk_env_put(global, "append", sk_cfun(bif_append));
 
     /** `(reverse L)` - Reverses a list `L` */
     TEXT_LIB(global,"(define (reverse l) (fold cons '() l))");
@@ -1673,7 +1691,9 @@ SkEnv *sk_global_env() {
     /** `pi` - 3.14159... */
     sk_env_put(global, "pi", sk_number(M_PI));
     
-    /** `(make-hash)` - creates a hash table */
+    /** `(make-hash [mappings])` - creates a hash table. The optional parameter `mappings`
+     * is a list of key-value pairs. For example `(make-hash '[("a" . 2) ("b" . 4) ("c" . 6) ])`
+     */
     sk_env_put(global, "make-hash", sk_cfun(bif_make_hash));
     /** `(hash? h)` - checks whether `h` is a hash table */
     sk_env_put(global, "hash?", sk_cfun(bif_is_hash));
@@ -1704,6 +1724,8 @@ SkEnv *sk_global_env() {
     TEXT_LIB(global, "(define (hash-count h) (length (hash-keys h)))");
     /** `(hash-empty? h)` - returns `#t` if the hash table `h` is empty, `#f` otherwise */
     TEXT_LIB(global, "(define (hash-empty? h) (zero? (hash-count h)))");
+    /** `(hash-display h)` - Displays the contents of the hash table `h` */
+    TEXT_LIB(global, "(define (hash-display h) [let* [(s (hash-map h (lambda (k v) (string-append \"(\" k \" . \" v \")\" ))))] (display \"#hash(\" (fold-right (lambda (a i) (string-append i \" \" a)) \"\" s) \")\" ) ])");
 
     return global;
 }
