@@ -23,7 +23,7 @@
 
 #ifndef SKEEM_H
 #define SKEEM_H
-#if defined(__cplusplus) || defined(c_plusplus)
+#ifdef __cplusplus
 extern "C"
 {
 #endif

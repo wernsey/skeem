@@ -313,3 +313,16 @@
 (display "Test 185 ...........................:" (test (member? "d => FRED" L) ))
 (display "Test 186 ...........................:" (test (member? "a => FOO" L) ))
 (display "Test 187 ...........................:" (test-not (member? "b => BAZ" L) ))
+
+
+(define  K (hash->list H))
+(define X (apply make-hash (list 'K)))
+
+(define L (hash-map X (lambda (k v) (string-append k " => " v) )))
+(display "Test 188 ...........................:" (test (member? "d => FRED" L) ))
+(display "Test 189 ...........................:" (test (member? "a => FOO" L) ))
+(display "Test 190 ...........................:" (test-not (member? "b => baz" L) ))
+
+(display "Test 191 ...........................:" (test-equal (hash-count X) 4 ))
+(display "Test 192 ...........................:" (test-not (hash-empty? X) ))
+(display "Test 193 ...........................:" (test (hash-empty? (make-hash)) ))

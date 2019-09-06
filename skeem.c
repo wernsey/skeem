@@ -1724,8 +1724,10 @@ SkEnv *sk_global_env() {
     TEXT_LIB(global, "(define (hash-count h) (length (hash-keys h)))");
     /** `(hash-empty? h)` - returns `#t` if the hash table `h` is empty, `#f` otherwise */
     TEXT_LIB(global, "(define (hash-empty? h) (zero? (hash-count h)))");
+    /** `(hash->string h)` - Returns a string representation of the hash table `h` */
+    TEXT_LIB(global, "(define (hash->string h) [let* [(s (hash-map h (lambda (k v) (string-append \"(\" k \" . \" v \") \" ))))] (string-append \"#hash( \" (apply string-append s) \")\" ) ])");
     /** `(hash-display h)` - Displays the contents of the hash table `h` */
-    TEXT_LIB(global, "(define (hash-display h) [let* [(s (hash-map h (lambda (k v) (string-append \"(\" k \" . \" v \")\" ))))] (display \"#hash(\" (fold-right (lambda (a i) (string-append i \" \" a)) \"\" s) \")\" ) ])");
+    TEXT_LIB(global, "(define (hash-display h) (display (hash->string h)))");
 
     return global;
 }

@@ -2,6 +2,8 @@
 
 ## TODOs
 
+* [ ] Tracking of line numbers; Error reporting is an issue, and I'm not quite sure how I
+  want to approach this.
 * [x] Escape sequences in string literals!
 * [x] The way `VALUE`s are written in `sk_serialize()` should escape special characters.
     * You can use the new `buffer_appendn()` function with a `s` as a `char[2]` and `len = 1`
@@ -50,13 +52,13 @@
     * I'll make an exception wrt the immutability of Skeem objects just this one time.
         * So no need for `(make-immutable-hash)`
     * [ ] ~~You might even be able to do the `(hash-set)` function by using the `SkEnv`'s parent.~~
-    * [ ] Serialization should lead to something like `(hash "apple" 'red "banana" 'yellow)`.
+    * [ ] ~~Serialization should lead to something like `(hash "apple" 'red "banana" 'yellow)`.~~
       * You don't need to go so far as the ` #hash` form.
     * See also Racket's [hash table reference][hashref]
 
 Here is the Awk script to renumber the tests in test/test.scm
 
-    awk '{if($0 ~ /Test [0-9]+/)gsub(/Test [0-9]+/,"Test " (++i));print}' test/test.scm
+    awk '{if($0 ~ /Test [0-9]+/)gsub(/Test [0-9]+/,"Test " (++i));print}' test/test.scm > test/test.scm~; mv test/test.scm~ test/test.scm
 
 [callcc]: https://ds26gte.github.io/tyscheme/index-Z-H-15.html#node_chap_13
 [hashtables]: https://docs.racket-lang.org/guide/hash-tables.html
