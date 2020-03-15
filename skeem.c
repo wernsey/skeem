@@ -6,6 +6,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <stdarg.h>
+#define _USE_MATH_DEFINES
 #include <math.h>
 #include <assert.h>
 
