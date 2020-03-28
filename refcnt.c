@@ -52,6 +52,19 @@
 #  undef DEBUG_DOUBLE_DEALLOC
 #endif
 
+static void *default_allocator(void *ptr, size_t size) {
+    if(size == 0) {
+        free(ptr);
+        return NULL;
+    } else
+        return realloc(ptr, size);
+}
+void *(*rc_allocator)(void *ptr, size_t size) = default_allocator;
+
+#define MALLOC(s)       rc_allocator(NULL, s)
+#define REALLOC(p,s)    rc_allocator(p, s)
+#define FREE(p)         rc_allocator(p, 0)
+
 #ifndef NDEBUG
 
 #  ifdef DEBUG_DOUBLE_DEALLOC
@@ -92,7 +105,7 @@ typedef struct refobj {
 
 #ifndef NDEBUG
 static void add_list_item(RefObj *r, const char *file, int line, const char *desc) {
-    HistoryList *hl = malloc(sizeof *hl), *it;
+    HistoryList *hl = MALLOC(sizeof *hl), *it;
     hl->next = NULL;
     if(r->list) {
         for(it = r->list; it->next; it = it->next);
@@ -108,7 +121,7 @@ static void add_list_item(RefObj *r, const char *file, int line, const char *des
 static void free_list(HistoryList *hl) {
     if(hl->next)
         free_list(hl->next);
-    free(hl);
+    FREE(hl);
 }
 
 static int rc_alloc_count = 0;
@@ -167,9 +180,9 @@ void *rc_alloc_(size_t size, const char *file, int line) {
     void *data;
 
 #ifndef NDEBUG
-    RefObj *r = malloc((sizeof *r) + size + sizeof(int));
+    RefObj *r = MALLOC((sizeof *r) + size + sizeof(int));
 #else
-    RefObj *r = malloc((sizeof *r) + size);
+    RefObj *r = MALLOC((sizeof *r) + size);
 #endif
     if(!r)
         return NULL;
@@ -207,9 +220,9 @@ void *rc_realloc_(void *p, size_t size, const char *file, int line) {
     r = (RefObj *)((char *)p - sizeof *r);
     assert(r->refcnt == 1);
 #ifdef NDEBUG
-    r = realloc(r, (sizeof *r) + size);
+    r = REALLOC(r, (sizeof *r) + size);
 #else
-    r = realloc(r, (sizeof *r) + size + sizeof(int));
+    r = REALLOC(r, (sizeof *r) + size + sizeof(int));
     char *data = (char*)r + sizeof *r;
     *(int *)((char *)data + size) = SENTINEL;
 
@@ -332,7 +345,7 @@ void rc_release_(void *p, const char *file, int line) {
             r->dtor(p);
         }
 #ifndef DEBUG_DOUBLE_DEALLOC
-        free(r);
+        FREE(r);
 #endif
     }
 #ifndef NDEBUG

@@ -167,3 +167,20 @@ void rc_set_dtor(void *p, ref_dtor dtor);
  * It does nothing if `NDEBUG` is defined for release builds.
  */
 void rc_init();
+
+/**
+ * #### `void *(*rc_allocator)(void *ptr, size_t size)`
+ * Pointer to a memory allocator function.
+ *
+ * If size is not 0, the function should allocate `size` bytes of
+ * memory and return a pointer to it. If `ptr` is not `NULL` the
+ * function should resize the block of memory pointed to by `ptr`,
+ * potentialy returning a different pointer.
+ * 
+ * If `size` is 0, the function should deallocate the memory pointed
+ * to by `ptr`.
+ *
+ * The default version wraps around `realloc()` and `free()` in
+ * the standard library.
+ */
+extern void *(*rc_allocator)(void *ptr, size_t size);
