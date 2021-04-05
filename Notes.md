@@ -2,6 +2,9 @@
 
 ## TODOs
 
+* [ ] I really need to do macros
+  * [lispy2] makes it look easy.
+  * [This link](https://icem.folkwang-uni.de/~finnendahl/cm_kurse/doc/schintro/schintro_130.html) was open in my browser for a long time, but I never got round to it.
 * [ ] Tracking of line numbers; Error reporting is an issue, and I'm not quite sure how I
   want to approach this.
 * [x] Escape sequences in string literals!
@@ -67,11 +70,11 @@ Here is the Awk script to renumber the tests in test/test.scm
 
 ## Debugging the Reference Counter
 
-If you define `SK_USE_EXTERNAL_REF_COUNTER` in the preprocessor, Skeem will use a 
-separate reference  counter that has functionality to check for unreleased references 
+If you define `SK_USE_EXTERNAL_REF_COUNTER` in the preprocessor, Skeem will use a
+separate reference  counter that has functionality to check for unreleased references
 when the interpreter terminates if it was compiled in debug mode (`NDEBUG` not defined).
 
-This functionality is disabled in the normal build because I want Skeem to be self 
+This functionality is disabled in the normal build because I want Skeem to be self
 contained and not require the separate `refcnt.c` and `refcnt.h`.
 
 I just want to keep these snippets around for reference. In the header:

@@ -408,11 +408,11 @@ int sk_length(SkObj *e) {
 ============================================================= */
 
 int sk_check_numeric(const char *c) {
-    /*return isdigit(c[0]) || (strchr("+-", c[0]) && isdigit(c[1]));*/
     int ds = 0, de = 0;
-    if(strchr("+-", *c))
+    if(*c == '+' || *c == '-')
         c++;
-    if(!*c || !isdigit(*(c++))) return 0;
+    if(!*c || !isdigit(*c++))
+        return 0;
     while(isdigit(*c) || (*c == '.' && !ds++) || ((*c == 'e' || *c == 'E') && !de++)) {
         if((*c == 'e' || *c == 'E') && (c[1] == '-' || c[1] == '+'))
             c++;
@@ -1480,7 +1480,7 @@ static SkObj *bif_hash_ref(SkEnv *env, SkObj *e) {
     const char *key = sk_get_text(sk_cadr(e));
     if(!key)
         return sk_error("'hash-ref' expects a key");
-    
+
     hash_element* v = env_findg_r(ht, key, hash(key));
     if(!v) {
         SkObj *fail = sk_caddr(e);
@@ -1502,7 +1502,7 @@ static SkObj *bif_hash_has_key(SkEnv *env, SkObj *e) {
     const char *key = sk_get_text(sk_cadr(e));
     if(!key)
         return sk_error("'hash-has-key' expects a key");
-    
+
     hash_element* v = env_findg_r(ht, key, hash(key));
     return sk_boolean(!!v);
 }
@@ -1512,7 +1512,7 @@ static SkObj *bif_hash_next(SkEnv *env, SkObj *e) {
     if(sk_get_cdtor(ho) != (ref_dtor_t)hash_table_dtor)
         return sk_error("'hash-next' expects a hash table");
     SkEnv *ht = sk_get_cdata(ho);
-    const char *key = sk_cadr(e) ? sk_get_text(sk_cadr(e)) : NULL;    
+    const char *key = sk_cadr(e) ? sk_get_text(sk_cadr(e)) : NULL;
     const char *next = sk_env_next(ht, key);
     if(!next)
         return NULL;
@@ -1691,7 +1691,7 @@ SkEnv *sk_global_env() {
     sk_env_put(global, "pow", sk_cfun(bif_pow));
     /** `pi` - 3.14159... */
     sk_env_put(global, "pi", sk_number(M_PI));
-    
+
     /** `(make-hash [mappings])` - creates a hash table. The optional parameter `mappings`
      * is a list of key-value pairs. For example `(make-hash '[("a" . 2) ("b" . 4) ("c" . 6) ])`
      */
@@ -1700,7 +1700,7 @@ SkEnv *sk_global_env() {
     sk_env_put(global, "hash?", sk_cfun(bif_is_hash));
     /** `(hash-set h k v)` - sets the value associated with `k` to `v` in hash table `h`. */
     sk_env_put(global, "hash-set", sk_cfun(bif_hash_set));
-    /** `(hash-ref h k [fail])` - retrieves the value associated with `k` in hash table `h`. 
+    /** `(hash-ref h k [fail])` - retrieves the value associated with `k` in hash table `h`.
      * If `k` is not found: if `fail` is a procedure, `fail` is called and its result returned,
      * otherwise `fail` is returned directly. */
     sk_env_put(global, "hash-ref", sk_cfun(bif_hash_ref));
