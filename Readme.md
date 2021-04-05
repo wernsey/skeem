@@ -115,6 +115,11 @@ elements from [part 2][lispy2]. The reference counter was inspired by
   - <http://community.schemewiki.org/?fold>
 - [Reference counting in ANSI-C][refcnt-c]
 - The [krig/LISP][krig] project on GitHub inspired me to get started. It also gave me some cool ideas.
+- The [Hash Tables](https://craftinginterpreters.com/hash-tables.html) chapter in munificent's _Crafting Interpreters_
+  convinced me that linear probing is better for resolving collisions in the hash tables than the chaining I used
+  previously (specifically when you're implementing the stack frame of an interpreter).
+  - Ben Hoyt's [How to implement a hash table (in C)](https://benhoyt.com/writings/hash-table-in-c/) sent me down that
+    particular rabbit hole.
 
 [scheme]: https://en.wikipedia.org/wiki/Scheme_(programming_language)
 [lispy]: http://norvig.com/lispy.html
@@ -141,11 +146,11 @@ elements from [part 2][lispy2]. The reference counter was inspired by
 
 ### Numbers
 
-All values are stored as strings internally. It uses the `"%.17g"` format string for `snprintf` - see 
+All values are stored as strings internally. It uses the `"%.17g"` format string for `snprintf` - see
 this article [floating point precision][precision] for more detail.
 
-Numeric performance suffers because a value needs to be converted to a double 
-(through `atof()`) if it is used as a number, and then the result of any arithmetic 
+Numeric performance suffers because a value needs to be converted to a double
+(through `atof()`) if it is used as a number, and then the result of any arithmetic
 needs to be converted back into a string (through `snprintf()`) when it is stored.
 
 A solution would be a `NUMBER` type `SkObj` with a `double` value, but the `sk_get_text()` function will

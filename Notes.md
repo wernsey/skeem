@@ -7,6 +7,8 @@
   * [This link](https://icem.folkwang-uni.de/~finnendahl/cm_kurse/doc/schintro/schintro_130.html) was open in my browser for a long time, but I never got round to it.
 * [ ] Tracking of line numbers; Error reporting is an issue, and I'm not quite sure how I
   want to approach this.
+* [ ] Surely it can't be too hard to eliminate the `strdup()` on the key in the `sk_env_put()` function.
+    * The problem is that users of the API will then have to know to make the key managed by the reference counter.
 * [x] Escape sequences in string literals!
 * [x] The way `VALUE`s are written in `sk_serialize()` should escape special characters.
     * You can use the new `buffer_appendn()` function with a `s` as a `char[2]` and `len = 1`

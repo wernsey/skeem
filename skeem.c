@@ -52,24 +52,23 @@ typedef struct SkObj {
 typedef struct hash_element {
     char *name;
     SkObj *ex;
-    struct hash_element *next;
 } hash_element;
 
 typedef struct SkEnv {
-    struct hash_element **table;
-    unsigned int mask;
+    struct hash_element *table;
+    unsigned int mask; /* allocated size == mask + 1 */
+    unsigned int count;
+
     struct SkEnv *parent;
 } SkEnv;
 
 static void env_dtor(SkEnv *env) {
     int i;
     for(i = 0; i <= env->mask; i++) {
-        while(env->table[i]) {
-            hash_element* v = env->table[i];
-            env->table[i] = v->next;
+        if(env->table[i].name) {
+            hash_element* v = &env->table[i];
             rc_release(v->ex);
             free(v->name);
-            free(v);
         }
     }
     free(env->table);
@@ -79,61 +78,100 @@ static void env_dtor(SkEnv *env) {
 SkEnv *sk_env_createn(SkEnv *parent, unsigned int size) {
     SkEnv *env = rc_alloc(sizeof *env);
     env->mask = size-1;
+    env->count = 0;
     env->table = calloc(size, sizeof *env->table);
     env->parent = rc_retain(parent);
     rc_set_dtor(env, (ref_dtor_t)env_dtor);
     return env;
 }
+
 SkEnv *sk_env_create(SkEnv *parent) {
     return sk_env_createn(parent, DEFAULT_HASH_SIZE);
 }
 
+/*
+FNV-1a hash, 32-bit version
+https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function
+*/
 static unsigned int hash(const char *s) {
-    /* DJB hash */
+    unsigned int h = 0x811c9dc5;
+    for(;s[0];s++) {
+        h ^= (unsigned char)s[0];
+        h *= 0x01000193;
+    }
+    return h;
+}
+
+/*
+static unsigned int hash(const char *s) {
     unsigned int h = 5381;
     for(;s[0];s++)
         h = ((h << 5) + h) + s[0];
     return h;
 }
+*/
+
+static hash_element *find_entry(hash_element *elements, unsigned int mask, const char *name) {
+    unsigned int h = hash(name) & mask;
+    for(;;) {
+        if(!elements[h].name || !strcmp(elements[h].name, name))
+            return &elements[h];
+        h = (h + 1) & mask;
+    }
+    return NULL;
+}
 
 SkObj *sk_env_put(SkEnv *env, const char *name, SkObj *e) {
-    unsigned int h = hash(name) & env->mask;
 
-    hash_element *v, *f = NULL;
     if(!env)
         return NULL;
 
-    for(v = env->table[h]; v; v = v->next)
-        if(!strcmp(v->name, name)) {
-            f = v;
-            break;
+    hash_element *f = find_entry(env->table, env->mask, name);
+    if(f->name) {
+        /* Replacing an existing entry */
+        rc_release(f->ex);
+    } else {
+        /* new entry */
+        if(env->count >= env->mask * 3 / 4) {
+            /* grow the table */
+            int new_size = (env->mask + 1) << 1;
+
+            hash_element *new_table = calloc(new_size, sizeof *new_table);
+            unsigned int i;
+            for(i = 0; i <= env->mask; i++) {
+                hash_element *from = &env->table[i];
+                if(from->name) {
+                    hash_element *to = find_entry(new_table, new_size-1, from->name);
+                    to->name = from->name;
+                    to->ex = from->ex;
+                }
+            }
+            free(env->table);
+
+            env->table = new_table;
+            env->mask = new_size - 1;
+
+            f = find_entry(env->table, env->mask, name);
         }
 
-    if(f)
-        rc_release(f->ex);
-    else {
-        f = malloc(sizeof *v);
-        f->name = strdup(name);
-        f->next = env->table[h];
-        env->table[h] = f;
+        f->name = strdup(name); /* TODO: get rid of this strdup()? */
+        env->count++;
     }
     f->ex = e;
     return e;
 }
 
-static hash_element *env_findg_r(SkEnv *env, const char *name, unsigned int h) {
-    hash_element *v;
+static hash_element *env_findg_r(SkEnv *env, const char *name) {
     if(!env)
         return NULL;
-    for(v = env->table[h & env->mask]; v; v = v->next)
-        if(!strcmp(v->name, name))
-            return v;
-    return env_findg_r(env->parent, name, h);
+    hash_element *f = find_entry(env->table, env->mask, name);
+    if(f->name)
+        return f;
+    return env_findg_r(env->parent, name);
 }
 
 SkObj *sk_env_get(SkEnv *env, const char *name) {
-    unsigned int h = hash(name);
-    hash_element* v = env_findg_r(env, name, h);
+    hash_element* v = env_findg_r(env, name);
     if(v)
         return v->ex;
     return sk_errorf("no such variable '%s'", name);
@@ -144,28 +182,26 @@ hash tables, but it is not generally useful because it won't be able to
 deal with a situation where a key is in a SkEnv and in that SkEnv's parent.
 That's why I don't expose it in the API */
 static const char *sk_env_next(SkEnv *env, const char *name) {
-    unsigned int h;
-    hash_element *e;
-    if(!env) return NULL;
-    if(!name) {
-        for(h = 0; h <= env->mask; h++) {
-            if((e = env->table[h]))
-                return e->name;
+    unsigned int h = 0;
+    assert(env->count < env->mask);
+    if(name) {
+        int oh;
+        oh = hash(name) & env->mask;
+        h = oh;
+        while(strcmp(env->table[h].name, name)) {
+            if(!env->table[h].name)
+                return NULL;
+            h = (h + 1) & env->mask;
         }
-    } else {
-        h = hash(name) & env->mask;
-        for(e = env->table[h]; e; e = e->next) {
-            if(!strcmp(e->name, name)) {
-                if(e->next)
-                    return e->next->name;
-                for(h++; h <= env->mask; h++) {
-                    if(env->table[h])
-                        return env->table[h]->name;
-                }
-            }
-        }
+        if(++h > env->mask)
+            return NULL;
     }
-    return NULL;
+    while(!env->table[h].name) {
+        if(h == env->mask)
+            return NULL;
+        h = h + 1;
+    }
+    return env->table[h].name;
 }
 
 /* =============================================================
@@ -1481,7 +1517,7 @@ static SkObj *bif_hash_ref(SkEnv *env, SkObj *e) {
     if(!key)
         return sk_error("'hash-ref' expects a key");
 
-    hash_element* v = env_findg_r(ht, key, hash(key));
+    hash_element* v = env_findg_r(ht, key);
     if(!v) {
         SkObj *fail = sk_caddr(e);
         if(!fail)
@@ -1503,7 +1539,7 @@ static SkObj *bif_hash_has_key(SkEnv *env, SkObj *e) {
     if(!key)
         return sk_error("'hash-has-key' expects a key");
 
-    hash_element* v = env_findg_r(ht, key, hash(key));
+    hash_element* v = env_findg_r(ht, key);
     return sk_boolean(!!v);
 }
 
